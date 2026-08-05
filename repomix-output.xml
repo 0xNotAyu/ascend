@@ -50,15 +50,23 @@ public/
   window.svg
 src/
   app/
+    api/
+      auth/
+        [...all]/
+          route.ts
     globals.css
     layout.tsx
     page.tsx
   components/
     ui/
       button.tsx
+  features/
+    dashboard/
+      index.ts
   lib/
+    auth-client.ts
+    auth.ts
     env.ts
-    mongodb.ts
     prisma.ts
     utils.ts
 .gitignore
@@ -75,29 +83,6 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="prisma/schema.prisma">
-generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
-}
-
-datasource db {
-  provider = "mongodb"
-}
-
-model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-
-  name      String
-  username  String   @unique
-  email     String   @unique
-  password  String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-</file>
 
 <file path="public/file.svg">
 <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
@@ -117,6 +102,13 @@ model User {
 
 <file path="public/window.svg">
 <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="src/app/api/auth/[...all]/route.ts">
+import { auth } from "@/lib/auth";
+import { toNextJsHandler } from "better-auth/next-js";
+
+export const { GET, POST } = toNextJsHandler(auth);
 </file>
 
 <file path="src/app/page.tsx">
@@ -248,32 +240,17 @@ function Button({
 export { Button, buttonVariants }
 </file>
 
-<file path="src/lib/env.ts">
-import "dotenv/config";
-import { z } from "zod";
+<file path="src/features/dashboard/index.ts">
 
-const envSchema = z.object({
-  MONGO_URI: z.string().min(1),
-});
-
-export const env = envSchema.parse(process.env);
 </file>
 
-<file path="src/lib/mongodb.ts">
-import mongoose from 'mongoose'
-import { env } from './env'
+<file path="src/lib/auth-client.ts">
+import { createAuthClient } from "better-auth/react";
+import { env } from "./env";
 
-const connectMongoDB = async () => {
-    try{
-        await mongoose.connect(env.MONGO_URI)
-        console.log("✅ mongodb connected")
-    } catch (error) {
-        console.error("❌ mongodb connection error", error)
-        process.exit(1)
-    }
-}
-
-export default connectMongoDB
+export const authClient = createAuthClient({
+  baseURL: env.BETTER_AUTH_URL,
+});
 </file>
 
 <file path="src/lib/prisma.ts">
@@ -523,6 +500,84 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 }
 </file>
 
+<file path="prisma/schema.prisma">
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  // url      = env("MONGO_URI")
+}
+
+model User {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name     String
+  username String @unique
+  email    String @unique
+  password String
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  emailVerified Boolean   @default(false)
+  image         String?
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @map("_id")
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @map("_id")
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @map("_id")
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+</file>
+
 <file path="src/app/globals.css">
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -695,6 +750,37 @@ export default function RootLayout({
 }
 </file>
 
+<file path="src/lib/auth.ts">
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+
+import { prisma } from "@/lib/prisma";
+
+
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "mongodb",
+  }),
+
+  emailAndPassword: {
+    enabled: true,
+  },
+});
+</file>
+
+<file path="src/lib/env.ts">
+import "dotenv/config";
+import { z } from "zod";
+
+const envSchema = z.object({
+  MONGO_URI: z.string().min(1),
+  BETTER_AUTH_SECRET: z.string().min(1),
+  BETTER_AUTH_URL: z.string().min(1)
+});
+
+export const env = envSchema.parse(process.env);
+</file>
+
 <file path=".gitignore">
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
@@ -742,6 +828,7 @@ next-env.d.ts
 /.agents
 /.claude
 /.windsurf
+/Thinking
 </file>
 
 <file path="package.json">
@@ -761,11 +848,10 @@ next-env.d.ts
     "@hugeicons/core-free-icons": "^4.2.3",
     "@hugeicons/react": "^1.1.9",
     "@prisma/client": "6.19",
+    "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
-    "mongodb": "^7.5.0",
-    "mongoose": "^9.9.0",
     "next": "16.2.12",
     "prisma": "6.19",
     "react": "19.2.4",

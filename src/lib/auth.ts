@@ -11,5 +11,20 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+    sendResetPassword: async ({ user, url }) => {
+      // Replace this with an email provider (for example Resend) before production.
+      console.info(`Password reset link for ${user.email}: ${url}`);
+    },
+  },
+
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      // This makes the flow usable during local development without exposing a token to the browser.
+      // Connect an email provider here before deploying.
+      console.info(`Email verification link for ${user.email}: ${url}`);
+    },
   },
 });
