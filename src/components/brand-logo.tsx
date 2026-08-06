@@ -11,17 +11,17 @@ export function BrandLogo({
   link?: boolean;
 }) {
   const content = (
-    <span
-      className={cn(
-        "inline-flex items-center gap-2 font-bold tracking-tight",
-        className,
-      )}
-    >
-      <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
-        <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
-      </span>
+    // <span
+    //   className={cn(
+    //     "inline-flex items-center gap-2 font-bold tracking-tight",
+    //     className,
+    //   )}
+    // >
+    //   <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
+    //     <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
+    //   </span>
       <span>Ascend</span>
-    </span>
+    // {/* </span> */}
   );
   return link ? (
     <Link href="/" aria-label="Ascend home">

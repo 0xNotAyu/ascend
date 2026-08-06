@@ -61,6 +61,8 @@ src/
         page.tsx
       verify-email/
         page.tsx
+    admin/
+      page.tsx
     api/
       auth/
         [...all]/
@@ -68,10 +70,14 @@ src/
     dashboard/
       layout.tsx
       page.tsx
+    inbox/
+      page.tsx
     globals.css
     layout.tsx
     page.tsx
   components/
+    admin/
+      admin-view.tsx
     auth/
       auth-form.tsx
       auth-shell.tsx
@@ -79,12 +85,23 @@ src/
       reset-password-form.tsx
       verify-email-panel.tsx
     dashboard/
-      dashboard-placeholder.tsx
+      activity-bar.tsx
+      collapsible-section.tsx
+      dashboard-view.tsx
+      panel-shell.tsx
+    inbox/
+      inbox-view.tsx
+    layout/
+      top-bar.tsx
+      two-pane-shell.tsx
     ui/
       button.tsx
       card.tsx
+      dialog.tsx
       input.tsx
       label.tsx
+      resizable.tsx
+      scroll-area.tsx
     brand-logo.tsx
   features/
     dashboard/
@@ -94,6 +111,7 @@ src/
     auth.ts
     env.ts
     prisma.ts
+    theme.ts
     utils.ts
 .gitignore
 components.json
@@ -109,6 +127,1442 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/app/admin/page.tsx">
+import AdminView from "@/components/admin/admin-view";
+
+export default function Page() {
+  return <AdminView />;
+}
+</file>
+
+<file path="src/app/inbox/page.tsx">
+import InboxView from "@/components/inbox/inbox-view";
+
+export default function Page() {
+  return <InboxView />;
+}
+</file>
+
+<file path="src/components/admin/admin-view.tsx">
+"use client";
+import { CATEGORY, ALL_FILTER_META, SCHEDULE_STYLE, ui } from "@/lib/theme";
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Activity01Icon,
+  Target02Icon,
+  Calendar03Icon,
+  Tag01Icon,
+  Add01Icon,
+  Edit02Icon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons";
+import { TopBar } from "@/components/layout/top-bar";
+import { TwoPaneShell, type NavEntry } from "@/components/layout/two-pane-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+type EntityId = "activities" | "goals" | "schedules" | "categories";
+type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
+
+interface EntityRecord {
+  id: string;
+  name: string;
+  entity: EntityId;
+  schedule: ScheduleType;
+  points: number;
+}
+
+const entities: NavEntry[] = [
+  { id: "activities", label: "Activities", icon: Activity01Icon },
+  { id: "goals", label: "Goals", icon: Target02Icon },
+  { id: "schedules", label: "Schedules", icon: Calendar03Icon },
+  { id: "categories", label: "Categories", icon: Tag01Icon },
+];
+
+const seedRecords: EntityRecord[] = [
+  { id: "1", name: "Morning workout", entity: "activities", schedule: "daily", points: 100 },
+  { id: "2", name: "Ship Ascend v1", entity: "goals", schedule: "one-time", points: 500 },
+  { id: "3", name: "Weekly review", entity: "schedules", schedule: "weekly", points: 50 },
+];
+
+const scheduleTypes: ScheduleType[] = ["daily", "weekly", "one-time", "yearly"];
+
+
+
+export default function AdminView() {
+  const [records, setRecords] = useState<EntityRecord[]>(seedRecords);
+  const [activeEntity, setActiveEntity] = useState<EntityId>("activities");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<EntityRecord | null>(null);
+  const [form, setForm] = useState({ name: "", schedule: "daily" as ScheduleType, points: 0 });
+
+  const counts = entities.map((e) => ({
+    ...e,
+    count: records.filter((r) => r.entity === (e.id as EntityId)).length,
+  }));
+
+  const rows = records.filter((r) => r.entity === activeEntity);
+  const activeLabel = entities.find((e) => e.id === activeEntity)?.label ?? "";
+
+  function openCreate() {
+    setEditing(null);
+    setForm({ name: "", schedule: "daily", points: 0 });
+    setDialogOpen(true);
+  }
+
+  function openEdit(record: EntityRecord) {
+    setEditing(record);
+    setForm({ name: record.name, schedule: record.schedule, points: record.points });
+    setDialogOpen(true);
+  }
+
+  function save() {
+    if (!form.name.trim()) return;
+    if (editing) {
+      setRecords((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...form } : r)));
+    } else {
+      setRecords((prev) => [...prev, { id: crypto.randomUUID(), entity: activeEntity, ...form }]);
+    }
+    setDialogOpen(false);
+  }
+
+  function remove(id: string) {
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <TopBar active="admin" level={12} streak={4} />
+
+      <TwoPaneShell
+        navTitle="Admin Panel"
+        entries={counts}
+        activeId={activeEntity}
+        onSelect={(id) => setActiveEntity(id as EntityId)}
+      >
+        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+          <span className="text-sm font-medium">{activeLabel}</span>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger render={
+              <Button size="sm" onClick={openCreate} className="h-7 gap-1.5 bg-amber-400 text-black hover:bg-amber-300">
+                <HugeiconsIcon icon={Add01Icon} size={14} />
+                New
+              </Button>
+            }>
+              
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editing ? `Edit ${activeLabel.slice(0, -1)}` : `New ${activeLabel.slice(0, -1)}`}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="schedule">Schedule</Label>
+                  <select
+                    id="schedule"
+                    value={form.schedule}
+                    onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value as ScheduleType }))}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {scheduleTypes.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="points">Points</Label>
+                  <Input
+                    id="points"
+                    type="number"
+                    value={form.points}
+                    onChange={(e) => setForm((f) => ({ ...f, points: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={save} className="bg-amber-400 text-black hover:bg-amber-300">
+                  {editing ? "Save changes" : "Create"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {rows.length === 0 ? (
+            <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
+              <span className="text-sm text-muted-foreground">
+                No {activeLabel.toLowerCase()} yet.
+              </span>
+              <span className="text-xs text-muted-foreground/70">
+                Create one to start tracking it on the Dashboard.
+              </span>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-5 py-2 font-medium">Name</th>
+                  <th className="px-5 py-2 font-medium">Schedule</th>
+                  <th className="px-5 py-2 font-medium">Points</th>
+                  <th className="px-5 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b border-border/30 hover:bg-accent/30">
+                    <td className="px-5 py-2.5">{row.name}</td>
+                    <td className="px-5 py-2.5">
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px] capitalize",
+                          SCHEDULE_STYLE[row.schedule]
+                        )}
+                      >
+                        {row.schedule}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2.5 font-mono text-xs text-amber-400">
+                      +{row.points}
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(row)}
+                          aria-label="Edit"
+                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          <HugeiconsIcon icon={Edit02Icon} size={13} />
+                        </button>
+                        <button
+                          onClick={() => remove(row.id)}
+                          aria-label="Delete"
+                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </TwoPaneShell>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/activity-bar.tsx">
+"use client";
+
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  DashboardSquare01Icon,
+  Target02Icon,
+  Book02Icon,
+  Settings02Icon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+interface ActivityItem {
+  id: string;
+  label: string;
+  icon: IconSvgElement;
+}
+
+const topItems: ActivityItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: DashboardSquare01Icon },
+  { id: "self-management", label: "Self-Management", icon: Target02Icon },
+  { id: "journal", label: "Journal", icon: Book02Icon },
+];
+
+const bottomItems: ActivityItem[] = [
+  { id: "settings", label: "Settings", icon: Settings02Icon },
+];
+
+export function ActivityBar({
+  active = "dashboard",
+  onSelect,
+}: {
+  active?: string;
+  onSelect?: (id: string) => void;
+}) {
+  return (
+    <div className="flex h-full w-12 shrink-0 flex-col items-center justify-between border-r border-border/60 bg-muted/20 py-2">
+      <div className="flex flex-col items-center gap-1">
+        {topItems.map((item) => (
+          <ActivityButton
+            key={item.id}
+            item={item}
+            active={active === item.id}
+            onClick={() => onSelect?.(item.id)}
+          />
+        ))}
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        {bottomItems.map((item) => (
+          <ActivityButton
+            key={item.id}
+            item={item}
+            active={active === item.id}
+            onClick={() => onSelect?.(item.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActivityButton({
+  item,
+  active,
+  onClick,
+}: {
+  item: ActivityItem;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={item.label}
+      aria-label={item.label}
+      className={cn(
+        "relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground",
+        active && "text-foreground"
+      )}
+    >
+      {active ? (
+        <span className="absolute left-0 top-1.5 h-7 w-0.5 rounded-full bg-primary" />
+      ) : null}
+      <HugeiconsIcon icon={item.icon} size={20} />
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/collapsible-section.tsx">
+"use client";
+
+import { ReactNode, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+interface CollapsibleSectionProps {
+  title: string;
+  count?: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+export function CollapsibleSection({
+  title,
+  count,
+  defaultOpen = true,
+  children,
+}: CollapsibleSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border-b border-border/40 last:border-b-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 w-full items-center gap-1.5 px-2 text-left hover:bg-accent/40"
+      >
+        <HugeiconsIcon
+          icon={open ? ArrowDown01Icon : ArrowRight01Icon}
+          size={12}
+          className="shrink-0 text-muted-foreground"
+        />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </span>
+        {typeof count === "number" ? (
+          <span className={cn("ml-auto text-[11px] text-muted-foreground")}>
+            {count}
+          </span>
+        ) : null}
+      </button>
+      {open ? <div className="pb-1">{children}</div> : null}
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/dashboard-view.tsx">
+"use client";
+
+import { CATEGORY, ALL_FILTER_META, SCHEDULE_STYLE, ui } from "@/lib/theme";
+
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  Fire02Icon,
+  UserSettings01Icon,
+  Target02Icon,
+  Activity01Icon,
+  Idea01Icon,
+  DashboardSquare01Icon,
+} from "@hugeicons/core-free-icons";
+import { TopBar } from "@/components/layout/top-bar";
+import { cn } from "@/lib/utils";
+
+type Category = "all" | "career" | "workout" | "improvement";
+
+
+
+interface Quest {
+  id: string;
+  title: string;
+  category: Exclude<Category, "all">;
+  points: number;
+  progress: number;
+  total: number;
+}
+
+const quests: Quest[] = [
+  { id: "1", title: "Deep work: ship one feature", category: "career", points: 100, progress: 0, total: 1 },
+  { id: "2", title: "Update resume / portfolio", category: "career", points: 100, progress: 0, total: 1 },
+  { id: "3", title: "30 min workout", category: "workout", points: 100, progress: 1, total: 1 },
+  { id: "4", title: "10k steps", category: "workout", points: 50, progress: 0, total: 1 },
+  { id: "5", title: "Write a journal entry", category: "improvement", points: 100, progress: 0, total: 1 },
+  { id: "6", title: "Read 20 pages", category: "improvement", points: 50, progress: 0, total: 1 },
+];
+
+interface GoalTrial {
+  id: string;
+  title: string;
+  progress: number;
+  total: number;
+  reward: string;
+}
+
+const goals: GoalTrial[] = [
+  { id: "1", title: "Finish Ascend v1", progress: 3, total: 6, reward: "Unlock streak freeze" },
+  { id: "2", title: "Land an internship", progress: 1, total: 5, reward: "Unlock weekly quests" },
+];
+
+const MILESTONES = [100, 200, 300, 400];
+const MAX_ENGAGEMENT = 400;
+
+export default function DashboardView() {
+  const [filter, setFilter] = useState<Category>("all");
+
+  const pointsToday = quests.reduce(
+    (sum, q) => sum + (q.progress >= q.total ? q.points : 0),
+    0
+  );
+  const visibleQuests = quests.filter(
+    (q) => filter === "all" || q.category === filter
+  );
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <TopBar active="dashboard" level={12} streak={4} />
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl space-y-5 p-6">
+          {/* Profile header */}
+          <div className="flex items-center gap-4 rounded-lg border border-border/60 bg-card/40 p-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 font-mono text-lg font-bold text-black">
+              12
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Level 12</span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  5,420 / 8,000 XP
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300"
+                  style={{ width: "68%" }}
+                />
+              </div>
+            </div>
+            <button className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground">
+              <HugeiconsIcon icon={UserSettings01Icon} size={14} />
+              Account
+            </button>
+          </div>
+
+          {/* Today's engagement */}
+          <div className="rounded-lg border border-border/60 bg-card/40 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium">Today&apos;s Engagement</span>
+              <span className="font-mono text-sm text-amber-400">
+                {pointsToday}
+                <span className="text-muted-foreground"> / {MAX_ENGAGEMENT}</span>
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all"
+                style={{
+                  width: `${Math.min(100, (pointsToday / MAX_ENGAGEMENT) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="mt-2 flex justify-between">
+              {MILESTONES.map((m) => {
+                const reached = pointsToday >= m;
+                return (
+                  <div key={m} className="flex flex-col items-center gap-1">
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full border-2",
+                        reached
+                          ? "border-amber-300 bg-amber-400"
+                          : "border-border bg-background"
+                      )}
+                    />
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {m}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quests */}
+          <div>
+            <div className="mb-3 flex items-center gap-1.5">
+              <FilterPill
+                label="All"
+                icon={DashboardSquare01Icon}
+                active={filter === "all"}
+                onClick={() => setFilter("all")}
+                activeClass="bg-foreground/10 text-foreground"
+              />
+              {(Object.keys(CATEGORY) as Array<keyof typeof CATEGORY>).map((key) => (
+                <FilterPill
+                  key={key}
+                  label={CATEGORY[key].label}
+                  icon={CATEGORY[key].icon}
+                  active={filter === key}
+                  onClick={() => setFilter(key)}
+                  activeClass={cn(CATEGORY[key].bg, CATEGORY[key].text)}
+                />
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleQuests.map((quest) => (
+                <QuestCard key={quest.id} quest={quest} />
+              ))}
+            </div>
+          </div>
+
+          {/* Long-term goals */}
+          <div>
+            <span className="mb-3 block text-sm font-medium">Long-Term Goals</span>
+            <div className="space-y-2">
+              {goals.map((goal) => (
+                <div
+                  key={goal.id}
+                  className="rounded-lg border border-border/60 bg-card/40 p-3.5"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">{goal.title}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {goal.progress}/{goal.total}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                    <div
+                      className="h-full rounded-full bg-cyan-400"
+                      style={{ width: `${(goal.progress / goal.total) * 100}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 text-[11px] text-muted-foreground">
+                    Reward: {goal.reward}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterPill({
+  label,
+  icon,
+  active,
+  onClick,
+  activeClass,
+}: {
+  label: string;
+  icon: IconSvgElement;
+  active: boolean;
+  onClick: () => void;
+  activeClass: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
+        active && cn("border-transparent", activeClass)
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={13} />
+      {label}
+    </button>
+  );
+}
+
+function QuestCard({ quest }: { quest: Quest }) {
+  const meta = CATEGORY[quest.category];
+  const done = quest.progress >= quest.total;
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border border-border/60 bg-card/40 p-3.5">
+      <div className="flex items-center justify-between">
+        <span
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]",
+            meta.bg,
+            meta.text
+          )}
+        >
+          <HugeiconsIcon icon={meta.icon} size={11} />
+          {meta.label}
+        </span>
+        <span className="font-mono text-xs text-amber-400">+{quest.points}</span>
+      </div>
+
+      <span className="text-[13px] font-medium leading-snug">{quest.title}</span>
+
+      {quest.total > 1 ? (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted/40">
+          <div
+            className={cn("h-full rounded-full", meta.bar)}
+            style={{ width: `${(quest.progress / quest.total) * 100}%` }}
+          />
+        </div>
+      ) : null}
+
+      <button
+        disabled={done}
+        className={cn(
+          "mt-1 h-7 rounded-md text-xs font-medium transition-colors",
+          done
+            ? "cursor-default bg-muted/40 text-muted-foreground"
+            : "bg-foreground text-background hover:opacity-90"
+        )}
+      >
+        {done ? "Done" : "Go"}
+      </button>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/panel-shell.tsx">
+"use client";
+
+import { ReactNode } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
+interface PanelAction {
+  icon: IconSvgElement;
+  label: string;
+  onClick?: () => void;
+}
+
+interface PanelShellProps {
+  title: string;
+  icon: IconSvgElement;
+  actions?: PanelAction[];
+  footer?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}
+
+export function PanelShell({
+  title,
+  icon,
+  actions = [],
+  footer,
+  children,
+  className,
+}: PanelShellProps) {
+  return (
+    <div className={cn("flex h-full min-w-0 flex-col bg-background", className)}>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/30 px-3">
+        <HugeiconsIcon icon={icon} size={14} className="text-muted-foreground" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </span>
+        <div className="ml-auto flex items-center gap-0.5">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              aria-label={action.label}
+              title={action.label}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            >
+              <HugeiconsIcon icon={action.icon} size={14} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col">{children}</div>
+      </ScrollArea>
+
+      {footer ? (
+        <div className="flex h-6 shrink-0 items-center border-t border-border/60 bg-muted/20 px-3 text-[11px] text-muted-foreground">
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PanelRow({
+  icon,
+  label,
+  meta,
+  indent = 0,
+  active = false,
+  onClick,
+}: {
+  icon?: IconSvgElement;
+  label: string;
+  meta?: string;
+  indent?: number;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ paddingLeft: 12 + indent * 16 }}
+      className={cn(
+        "flex h-7 w-full items-center gap-2 pr-3 text-left text-[13px] hover:bg-accent/50",
+        active && "bg-accent/70"
+      )}
+    >
+      {icon ? (
+        <HugeiconsIcon icon={icon} size={14} className="shrink-0 text-muted-foreground" />
+      ) : (
+        <span className="w-3.5 shrink-0" />
+      )}
+      <span className="truncate">{label}</span>
+      {meta ? (
+        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{meta}</span>
+      ) : null}
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/inbox/inbox-view.tsx">
+"use client";
+
+
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Idea01Icon,
+  Task01Icon,
+  StickyNote01Icon,
+  Link01Icon,
+  Tag01Icon,
+  Add01Icon,
+} from "@hugeicons/core-free-icons";
+import { TopBar } from "@/components/layout/top-bar";
+import { TwoPaneShell, type NavEntry } from "@/components/layout/two-pane-shell";
+
+type FolderId = "ideas" | "tasks" | "notes" | "links" | "organize";
+
+interface InboxItem {
+  id: string;
+  label: string;
+  folder: FolderId;
+}
+
+const folders: NavEntry[] = [
+  { id: "ideas", label: "Ideas", icon: Idea01Icon },
+  { id: "tasks", label: "Unprocessed tasks", icon: Task01Icon },
+  { id: "notes", label: "Notes", icon: StickyNote01Icon },
+  { id: "links", label: "Links", icon: Link01Icon },
+  { id: "organize", label: "To organize later", icon: Tag01Icon },
+];
+
+const seedItems: InboxItem[] = [
+  { id: "1", label: "Try RRF re-ranking on the notebook retriever", folder: "ideas" },
+  { id: "2", label: "Renew gym membership before the 15th", folder: "tasks" },
+  { id: "3", label: "prisma.io/docs/mongodb-preview", folder: "links" },
+  { id: "4", label: "Note on convolution kernels from class", folder: "notes" },
+];
+
+export default function InboxView() {
+  const [items, setItems] = useState<InboxItem[]>(seedItems);
+  const [activeFolder, setActiveFolder] = useState<FolderId>("ideas");
+  const [draft, setDraft] = useState("");
+
+  const counts = folders.map((f) => ({
+    ...f,
+    count: items.filter((i) => i.folder === (f.id as FolderId)).length,
+  }));
+
+  const visible = items.filter((i) => i.folder === activeFolder);
+  const activeLabel = folders.find((f) => f.id === activeFolder)?.label ?? "";
+
+  function capture() {
+    const value = draft.trim();
+    if (!value) return;
+    setItems((prev) => [
+      { id: crypto.randomUUID(), label: value, folder: activeFolder },
+      ...prev,
+    ]);
+    setDraft("");
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <TopBar active="inbox" level={12} streak={4} />
+
+      <TwoPaneShell
+        navTitle="Inbox"
+        entries={counts}
+        activeId={activeFolder}
+        onSelect={(id) => setActiveFolder(id as FolderId)}
+        navFooter={
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Capture first, organize later.
+          </p>
+        }
+      >
+        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+          <span className="text-sm font-medium">{activeLabel}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {visible.length} item{visible.length === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div className="border-b border-border/40 px-5 py-3">
+          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2 focus-within:border-amber-400/50">
+            <HugeiconsIcon icon={Add01Icon} size={15} className="shrink-0 text-muted-foreground" />
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") capture();
+              }}
+              placeholder={`Add to ${activeLabel.toLowerCase()}…`}
+              className="h-5 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          {visible.length === 0 ? (
+            <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
+              <span className="text-sm text-muted-foreground">Nothing here yet.</span>
+              <span className="text-xs text-muted-foreground/70">
+                Whatever&apos;s on your mind goes here first.
+              </span>
+            </div>
+          ) : (
+            visible.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-md px-3 py-2.5 text-sm hover:bg-accent/40"
+              >
+                {item.label}
+              </div>
+            ))
+          )}
+        </div>
+      </TwoPaneShell>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/layout/top-bar.tsx">
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  InboxIcon,
+  Settings02Icon,
+  Fire02Icon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+type Screen = "dashboard" | "inbox" | "admin";
+
+export function TopBar({
+  active,
+  level = 1,
+  streak = 0,
+}: {
+  active: Screen;
+  level?: number;
+  streak?: number;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && active !== "dashboard") {
+        router.push("/dashboard");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, router]);
+
+  return (
+    <div className="flex h-13 shrink-0 items-center justify-between border-b border-border/60 bg-background/95 px-4 backdrop-blur">
+      <button
+        onClick={() => router.push("/dashboard")}
+        className="flex items-center gap-2.5 hover:opacity-90"
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-amber-400 to-amber-600 text-[13px] font-bold text-black">
+          A
+        </span>
+        <span className="text-sm font-semibold tracking-[0.08em]">ASCEND</span>
+        <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-400">
+          LV {level}
+        </span>
+      </button>
+
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
+          <HugeiconsIcon icon={Fire02Icon} size={13} className="text-rose-400" />
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {streak}d
+          </span>
+        </div>
+
+        <div className="h-5 w-px bg-border/60" />
+
+        <div className="flex items-center gap-1">
+          <NavIcon
+            icon={InboxIcon}
+            label="Inbox"
+            active={active === "inbox"}
+            onClick={() => router.push("/inbox")}
+          />
+          <NavIcon
+            icon={Settings02Icon}
+            label="Admin Panel"
+            active={active === "admin"}
+            onClick={() => router.push("/admin")}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavIcon({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof InboxIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
+        active && "bg-amber-400/10 text-amber-400 hover:bg-amber-400/15 hover:text-amber-400"
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={17} />
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/layout/two-pane-shell.tsx">
+"use client";
+
+
+import { ReactNode } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import { cn } from "@/lib/utils";
+
+export interface NavEntry {
+  id: string;
+  label: string;
+  icon: IconSvgElement;
+  count?: number;
+}
+
+export function TwoPaneShell({
+  navTitle,
+  entries,
+  activeId,
+  onSelect,
+  navFooter,
+  children,
+}: {
+  navTitle: string;
+  entries: NavEntry[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  navFooter?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-1 min-h-0">
+      <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/10">
+        <div className="px-3 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {navTitle}
+        </div>
+        <nav className="flex flex-col gap-0.5 px-2">
+          {entries.map((entry) => {
+            const isActive = activeId === entry.id;
+            return (
+              <button
+                key={entry.id}
+                onClick={() => onSelect(entry.id)}
+                className={cn(
+                  "group flex h-8.5 items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
+                  isActive && "bg-amber-400/10 text-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-4 w-0.5 shrink-0 rounded-full bg-transparent",
+                    isActive && "bg-amber-400"
+                  )}
+                />
+                <HugeiconsIcon
+                  icon={entry.icon}
+                  size={15}
+                  className={cn("shrink-0", isActive && "text-amber-400")}
+                />
+                <span className="truncate">{entry.label}</span>
+                {typeof entry.count === "number" ? (
+                  <span
+                    className={cn(
+                      "ml-auto rounded-full px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground",
+                      entry.count > 0 && "bg-muted/60"
+                    )}
+                  >
+                    {entry.count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+        {navFooter ? (
+          <div className="mt-auto border-t border-border/50 p-3">{navFooter}</div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-1 min-w-0 flex-col">{children}</div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/ui/dialog.tsx">
+"use client"
+
+import * as React from "react"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Cancel01Icon } from "@hugeicons/core-free-icons"
+
+function Dialog({ ...props }: DialogPrimitive.Root.Props) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}
+
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+}
+
+function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+}
+
+function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
+}
+
+function DialogOverlay({
+  className,
+  ...props
+}: DialogPrimitive.Backdrop.Props) {
+  return (
+    <DialogPrimitive.Backdrop
+      data-slot="dialog-overlay"
+      className={cn(
+        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: DialogPrimitive.Popup.Props & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Popup
+        data-slot="dialog-content"
+        className={cn(
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            render={
+              <Button
+                variant="ghost"
+                className="absolute top-4 right-4"
+                size="icon-sm"
+              />
+            }
+          >
+            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Popup>
+    </DialogPortal>
+  )
+}
+
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogFooter({
+  className,
+  showCloseButton = false,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      {showCloseButton && (
+        <DialogPrimitive.Close render={<Button variant="outline" />}>
+          Close
+        </DialogPrimitive.Close>
+      )}
+    </div>
+  )
+}
+
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("font-heading leading-none font-medium", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogDescription({
+  className,
+  ...props
+}: DialogPrimitive.Description.Props) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn(
+        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+}
+</file>
+
+<file path="src/components/ui/resizable.tsx">
+"use client"
+
+import * as ResizablePrimitive from "react-resizable-panels"
+
+import { cn } from "@/lib/utils"
+
+function ResizablePanelGroup({
+  className,
+  ...props
+}: ResizablePrimitive.GroupProps) {
+  return (
+    <ResizablePrimitive.Group
+      data-slot="resizable-panel-group"
+      className={cn(
+        "flex h-full w-full aria-[orientation=vertical]:flex-col",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
+  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+}
+
+function ResizableHandle({
+  withHandle,
+  className,
+  ...props
+}: ResizablePrimitive.SeparatorProps & {
+  withHandle?: boolean
+}) {
+  return (
+    <ResizablePrimitive.Separator
+      data-slot="resizable-handle"
+      className={cn(
+        "relative flex w-px items-center justify-center bg-border ring-offset-background after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:rotate-90",
+        className
+      )}
+      {...props}
+    >
+      {withHandle && (
+        <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />
+      )}
+    </ResizablePrimitive.Separator>
+  )
+}
+
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup }
+</file>
+
+<file path="src/components/ui/scroll-area.tsx">
+"use client"
+
+import * as React from "react"
+import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
+
+import { cn } from "@/lib/utils"
+
+function ScrollArea({
+  className,
+  children,
+  ...props
+}: ScrollAreaPrimitive.Root.Props) {
+  return (
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className={cn("relative", className)}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        data-slot="scroll-area-viewport"
+        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  )
+}
+
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: ScrollAreaPrimitive.Scrollbar.Props) {
+  return (
+    <ScrollAreaPrimitive.Scrollbar
+      data-slot="scroll-area-scrollbar"
+      data-orientation={orientation}
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        className
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Thumb
+        data-slot="scroll-area-thumb"
+        className="relative flex-1 rounded-full bg-border"
+      />
+    </ScrollAreaPrimitive.Scrollbar>
+  )
+}
+
+export { ScrollArea, ScrollBar }
+</file>
+
+<file path="src/lib/theme.ts">
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  Target02Icon,
+  Activity01Icon,
+  Idea01Icon,
+  DashboardSquare01Icon,
+} from "@hugeicons/core-free-icons";
+
+export type Category = "career" | "workout" | "improvement";
+export type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
+
+interface CategoryMeta {
+  label: string;
+  icon: IconSvgElement;
+  text: string;
+  bg: string;
+  bar: string;
+}
+
+export const CATEGORY: Record<Category, CategoryMeta> = {
+  career: {
+    label: "Career",
+    icon: Target02Icon,
+    text: "text-cyan-400",
+    bg: "bg-cyan-400/10",
+    bar: "bg-cyan-400",
+  },
+  workout: {
+    label: "Workout",
+    icon: Activity01Icon,
+    text: "text-rose-400",
+    bg: "bg-rose-400/10",
+    bar: "bg-rose-400",
+  },
+  improvement: {
+    label: "Improvement",
+    icon: Idea01Icon,
+    text: "text-violet-400",
+    bg: "bg-violet-400/10",
+    bar: "bg-violet-400",
+  },
+};
+
+export const ALL_FILTER_META: Pick<CategoryMeta, "label" | "icon"> = {
+  label: "All",
+  icon: DashboardSquare01Icon,
+};
+
+export const SCHEDULE_STYLE: Record<ScheduleType, string> = {
+  daily: "bg-cyan-400/10 text-cyan-400",
+  weekly: "bg-violet-400/10 text-violet-400",
+  "one-time": "bg-amber-400/10 text-amber-400",
+  yearly: "bg-rose-400/10 text-rose-400",
+};
+
+// Reusable class fragments — change spacing/borders/surfaces app-wide from here.
+export const ui = {
+  panel: "rounded-lg border border-border/60 bg-card/40 p-4",
+  panelTight: "rounded-lg border border-border/60 bg-card/40 p-3.5",
+  pill: "rounded-full px-2 py-0.5 text-[11px]",
+  progressTrack: "h-2 w-full overflow-hidden rounded-full bg-muted/40",
+  progressTrackThin: "h-1.5 w-full overflow-hidden rounded-full bg-muted/40",
+  progressFillAmber:
+    "h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300",
+  mono: "font-mono text-xs text-amber-400",
+  sectionLabel: "text-sm font-medium",
+} as const;
+</file>
 
 <file path="public/file.svg">
 <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
@@ -228,130 +1682,10 @@ export default async function DashboardLayout({
 </file>
 
 <file path="src/app/dashboard/page.tsx">
-import { DashboardPlaceholder } from "@/components/dashboard/dashboard-placeholder";
-export default function DashboardPage() {
-  return <DashboardPlaceholder />;
-}
-</file>
+import DashboardView from "@/components/dashboard/dashboard-view";
 
-<file path="src/components/auth/auth-form.tsx">
-"use client";
-
-import Link from "next/link";
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
-type Mode = "login" | "signup";
-
-export function AuthForm({ mode }: { mode: Mode }) {
-  const router = useRouter();
-  const [error, setError] = useState("");
-  const [isPending, setIsPending] = useState(false);
-  const isSignUp = mode === "signup";
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setIsPending(true);
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get("email"));
-    const password = String(data.get("password"));
-    const result = isSignUp
-      ? await authClient.signUp.email({
-          name: String(data.get("name")),
-          email,
-          password,
-        })
-      : await authClient.signIn.email({ email, password });
-
-    setIsPending(false);
-    if (result.error) {
-      setError(
-        result.error.message ?? "Something went wrong. Please try again.",
-      );
-      return;
-    }
-    router.push(
-      isSignUp
-        ? `/verify-email?email=${encodeURIComponent(email)}`
-        : "/dashboard",
-    );
-    router.refresh();
-  }
-
-  return (
-    <form onSubmit={submit} className="grid gap-5">
-      {isSignUp && <Field label="Name" name="name" autoComplete="name" />}
-      <Field label="Email" name="email" type="email" autoComplete="email" />
-      <div className="grid gap-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="password">Password</Label>
-          {!isSignUp && (
-            <Link
-              href="/forgot-password"
-              className="text-sm text-primary hover:underline"
-            >
-              Forgot password?
-            </Link>
-          )}
-        </div>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          minLength={8}
-          autoComplete={isSignUp ? "new-password" : "current-password"}
-          required
-        />
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
-      </Button>
-      <p className="text-center text-sm text-muted-foreground">
-        {isSignUp ? "Already have an account?" : "New to Ascend?"}{" "}
-        <Link
-          href={isSignUp ? "/login" : "/signup"}
-          className="text-primary hover:underline"
-        >
-          {isSignUp ? "Sign in" : "Create an account"}
-        </Link>
-      </p>
-    </form>
-  );
-}
-
-function Field({
-  label,
-  name,
-  type = "text",
-  autoComplete,
-}: {
-  label: string;
-  name: string;
-  type?: string;
-  autoComplete: string;
-}) {
-  return (
-    <div className="grid gap-2">
-      <Label htmlFor={name}>{label}</Label>
-      <Input
-        id={name}
-        name={name}
-        type={type}
-        autoComplete={autoComplete}
-        required
-      />
-    </div>
-  );
+export default function Page() {
+  return <DashboardView />;
 }
 </file>
 
@@ -581,81 +1915,6 @@ export function VerifyEmailPanel() {
 }
 </file>
 
-<file path="src/components/dashboard/dashboard-placeholder.tsx">
-"use client";
-
-import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
-import { BrandLogo } from "@/components/brand-logo";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-export function DashboardPlaceholder() {
-  const router = useRouter();
-  const { data: session } = authClient.useSession();
-  async function signOut() {
-    await authClient.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-  const name = session?.user.name?.split(" ")[0] ?? "there";
-  return (
-    <main className="min-h-screen bg-muted/30">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <BrandLogo className="text-xl" />
-        <Button variant="outline" onClick={signOut}>
-          Sign out
-        </Button>
-      </header>
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <p className="text-sm font-medium text-primary">YOUR DASHBOARD</p>
-        <h1 className="mt-2 text-4xl font-bold tracking-tight">
-          Welcome, {name}.
-        </h1>
-        <p className="mt-3 max-w-xl text-muted-foreground">
-          Your personal execution system is ready. Goals, habits, planning, and
-          progress insights are coming next.
-        </p>
-        <div className="mt-10 grid gap-4 md:grid-cols-3">
-          <PlaceholderCard
-            title="Today’s focus"
-            text="Choose the few actions that matter most."
-          />
-          <PlaceholderCard
-            title="Current goals"
-            text="Turn meaningful goals into clear next steps."
-          />
-          <PlaceholderCard
-            title="Consistency"
-            text="Build your systems one completed day at a time."
-          />
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function PlaceholderCard({ title, text }: { title: string; text: string }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{text}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="h-2 rounded-full bg-muted" />
-      </CardContent>
-    </Card>
-  );
-}
-</file>
-
 <file path="src/components/ui/button.tsx">
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -794,17 +2053,17 @@ export function BrandLogo({
   link?: boolean;
 }) {
   const content = (
-    <span
-      className={cn(
-        "inline-flex items-center gap-2 font-bold tracking-tight",
-        className,
-      )}
-    >
-      <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
-        <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
-      </span>
+    // <span
+    //   className={cn(
+    //     "inline-flex items-center gap-2 font-bold tracking-tight",
+    //     className,
+    //   )}
+    // >
+    //   <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
+    //     <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
+    //   </span>
       <span>Ascend</span>
-    </span>
+    // {/* </span> */}
   );
   return link ? (
     <Link href="/" aria-label="Ascend home">
@@ -1051,7 +2310,155 @@ import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
 
 export default function Home() {
-  return <main className="flex min-h-screen items-center justify-center bg-muted/40 px-6 text-center"><div className="max-w-2xl"><BrandLogo className="text-2xl" link={false} /><h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">Make progress, consistently.</h1><p className="mt-5 text-lg text-muted-foreground">A personal system for the goals, habits, and focused work that move your life forward.</p><div className="mt-8 flex justify-center gap-3"><Link href="/signup" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80">Create account</Link><Link href="/login" className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted">Sign in</Link></div></div></main>;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-6 text-center">
+      <div className="max-w-2xl">
+        <BrandLogo className="text-2xl" link={false} />
+        <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">
+          Make progress, consistently.
+        </h1>
+        <p className="mt-5 text-lg text-muted-foreground">
+          A personal system for the goals, habits, and focused work that move
+          your life forward.
+        </p>
+        <div className="mt-8 flex justify-center gap-3">
+          <Link
+            href="/signup"
+            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80"
+          >
+            Create account
+          </Link>
+          <Link
+            href="/login"
+            className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            Sign in
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/components/auth/auth-form.tsx">
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+type Mode = "login" | "signup"; 
+
+export function AuthForm({ mode }: { mode: Mode }) {
+  const router = useRouter();
+  const [error, setError] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const isSignUp = mode === "signup";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setIsPending(true);
+    const data = new FormData(event.currentTarget);
+    const email = String(data.get("email"));
+    const password = String(data.get("password"));
+    const result = isSignUp
+      ? await authClient.signUp.email({
+          name: String(data.get("name")),
+          email,
+          password,
+        })
+      : await authClient.signIn.email({ email, password });
+
+    setIsPending(false);
+    if (result.error) {
+      setError(
+        result.error.message ?? "Something went wrong. Please try again.",
+      );
+      return;
+    }
+    router.push(
+      isSignUp
+        ? `/verify-email?email=${encodeURIComponent(email)}`
+        : "/dashboard",
+    );
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-5">
+      {isSignUp && <Field label="Name" name="name" autoComplete="name" />}
+      <Field label="Email" name="email" type="email" autoComplete="email" />
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          {!isSignUp && (
+            <Link
+              href="/forgot-password"
+              className="text-sm text-primary hover:underline"
+            >
+              Forgot password?
+            </Link>
+          )}
+        </div>
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          minLength={8}
+          autoComplete={isSignUp ? "new-password" : "current-password"}
+          required
+        />
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" className="w-full" disabled={isPending}>
+        {isPending ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
+      </Button>
+      <p className="text-center text-sm text-muted-foreground">
+        {isSignUp ? "Already have an account?" : "New to Ascend?"}{" "}
+        <Link
+          href={isSignUp ? "/login" : "/signup"}
+          className="text-primary hover:underline"
+        >
+          {isSignUp ? "Sign in" : "Create an account"}
+        </Link>
+      </p>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  name,
+  type = "text",
+  autoComplete,
+}: {
+  label: string;
+  name: string;
+  type?: string;
+  autoComplete: string;
+}) {
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        id={name}
+        name={name}
+        type={type}
+        autoComplete={autoComplete}
+        required
+      />
+    </div>
+  );
 }
 </file>
 
@@ -1437,10 +2844,12 @@ next-env.d.ts
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
+    "lucide-react": "^1.28.0",
     "next": "16.2.12",
     "prisma": "6.19",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-resizable-panels": "^4.12.2",
     "shadcn": "^4.16.0",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",

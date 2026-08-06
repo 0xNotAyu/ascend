@@ -27,6 +27,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -39,6 +40,23 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* semantic status colors */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  /* brand accent — distinct from the black "primary action" buttons */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-mention: var(--mention);
+  --color-mention-foreground: var(--mention-foreground);
+
+  /* soft shadows as utilities: shadow-soft / shadow-dialog */
+  --shadow-soft: var(--shadow-soft-value);
+  --shadow-dialog: var(--shadow-dialog-value);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,74 +67,134 @@
 }
 
 :root {
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter",
+    sans-serif;
   --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
+
+  --background: #ffffff;
+  --foreground: #111827;
+
+  --card: #fcfcfd;
+  --card-foreground: #111827;
+
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+
+  /* Primary Action buttons = black solid fill */
+  --primary: #111111;
+  --primary-foreground: #ffffff;
+
+  /* Secondary = white surface + thin border, handled mostly by ui.tsx variants */
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+
+  --muted: #f8fafc;
+  --muted-foreground: #6b7280;
+
+  /* Accent = soft blue tint, used for selected icon buttons / active states */
+  --accent: #e8f3ff;
+  --accent-foreground: #3b82f6;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #3b82f6;
+
+  /* Brand blue — links, progress fills, focus accents (separate from black CTA) */
+  --brand: #3b82f6;
+  --brand-foreground: #ffffff;
+
+  --success: #22c55e;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #111111;
+
+  /* Mentions — soft orange tint per spec */
+  --mention: #fff1e6;
+  --mention-foreground: #c2621b;
+
+  --shadow-soft-value: 0 2px 8px rgb(0 0 0 / 6%);
+  --shadow-dialog-value: 0 20px 60px rgb(0 0 0 / 18%);
+
+  --chart-1: #3b82f6;
+  --chart-2: #22c55e;
+  --chart-3: #f59e0b;
+  --chart-4: #a855f7;
+  --chart-5: #ef4444;
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
+
+  --sidebar: #fcfcfd;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #111111;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8f3ff;
+  --sidebar-accent-foreground: #3b82f6;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #3b82f6;
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.424 0.199 265.638);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --background: #0f1115;
+  --foreground: #f5f7fa;
+
+  --card: #181c23;
+  --card-foreground: #f5f7fa;
+
+  --popover: #181c23;
+  --popover-foreground: #f5f7fa;
+
+  /* Primary Action buttons = white, inverted for contrast */
+  --primary: #f5f7fa;
+  --primary-foreground: #0f1115;
+
+  --secondary: #1f242d;
+  --secondary-foreground: #f5f7fa;
+
+  --muted: #181c23;
+  --muted-foreground: #a0a8b5;
+
+  --accent: #1b2a3d;
+  --accent-foreground: #4f9dff;
+
+  --destructive: #f87171;
+  --destructive-foreground: #0f1115;
+
+  --border: #2a2f38;
+  --input: #2a2f38;
+  --ring: #4f9dff;
+
+  --brand: #4f9dff;
+  --brand-foreground: #0f1115;
+
+  --success: #4ade80;
+  --success-foreground: #0f1115;
+  --warning: #fbbf24;
+  --warning-foreground: #0f1115;
+
+  --mention: #2a2115;
+  --mention-foreground: #f0b06a;
+
+  --shadow-soft-value: 0 2px 8px rgb(0 0 0 / 30%);
+  --shadow-dialog-value: 0 20px 60px rgb(0 0 0 / 45%);
+
+  --chart-1: #4f9dff;
+  --chart-2: #4ade80;
+  --chart-3: #fbbf24;
+  --chart-4: #c084fc;
+  --chart-5: #f87171;
+
+  --sidebar: #181c23;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #f5f7fa;
+  --sidebar-primary-foreground: #0f1115;
+  --sidebar-accent: #1b2a3d;
+  --sidebar-accent-foreground: #4f9dff;
+  --sidebar-border: #2a2f38;
+  --sidebar-ring: #4f9dff;
 }
 
 @layer base {
@@ -127,6 +205,6 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
   }
 }
