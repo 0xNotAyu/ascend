@@ -262,8 +262,8 @@ export default function WeeklyDashboard() {
   return (
     // Staging backdrop only — this gray canvas is how the reference shot frames
     // the component, it isn't part of the design system / theme tokens.
-    <div className="flex min-h-screen w-full items-center justify-center bg-neutral-700 p-6">
-      <div className="w-full max-w-5xl rounded-3xl bg-neutral-900 p-6 shadow-2xl shadow-black/50">
+    <div className="flex min-h-screen w-full items-center justify-center bg-neutral-800 p-6">
+      <div className="w-full max-w-5xl rounded-3xl bg-neutral-900 p-6 ">
         {/* Top row: breadcrumb + actions */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-sm">
