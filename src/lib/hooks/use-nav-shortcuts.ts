@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
 const SHORTCUTS: Record<string, string> = {
-  "1": "/inbox",
+  "1": "/notes",
   "2": "/admin",
 };
 

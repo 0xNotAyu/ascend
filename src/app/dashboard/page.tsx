@@ -1,5 +1,5 @@
-import DashboardView from "@/components/dashboard/dashboard-view";
+import WeeklyDashboard from "@/components/dashboard/self-managment-system";
 
 export default function Page() {
-  return <DashboardView />;
+  return <WeeklyDashboard />;
 }

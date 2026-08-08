@@ -72,6 +72,8 @@ src/
       page.tsx
     inbox/
       page.tsx
+    notes/
+      page.tsx
     globals.css
     layout.tsx
     page.tsx
@@ -91,9 +93,15 @@ src/
       panel-shell.tsx
     inbox/
       inbox-view.tsx
+      item-composer.tsx
     layout/
+      nav-shortcuts.tsx
       top-bar.tsx
       two-pane-shell.tsx
+    notes/
+      folder-tree.tsx
+      markdown-editor.tsx
+      notes-view.tsx
     ui/
       button.tsx
       card.tsx
@@ -107,6 +115,10 @@ src/
     dashboard/
       index.ts
   lib/
+    hooks/
+      use-nav-shortcuts.ts
+    notes/
+      types.ts
     auth-client.ts
     auth.ts
     env.ts
@@ -128,997 +140,674 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/app/admin/page.tsx">
-import AdminView from "@/components/admin/admin-view";
+<file path="src/app/notes/page.tsx">
+import NotesView from "@/components/notes/notes-view";
 
-export default function Page() {
-  return <AdminView />;
+export default function NotesPage() {
+  return <NotesView />;
 }
 </file>
 
-<file path="src/app/inbox/page.tsx">
-import InboxView from "@/components/inbox/inbox-view";
-
-export default function Page() {
-  return <InboxView />;
-}
-</file>
-
-<file path="src/components/admin/admin-view.tsx">
+<file path="src/components/notes/folder-tree.tsx">
 "use client";
-import { CATEGORY, ALL_FILTER_META, SCHEDULE_STYLE, ui } from "@/lib/theme";
+
 import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Activity01Icon,
-  Target02Icon,
-  Calendar03Icon,
-  Tag01Icon,
+  ArrowRight01Icon,
+  Folder01Icon,
   Add01Icon,
-  Edit02Icon,
   Delete02Icon,
+  File01Icon,
 } from "@hugeicons/core-free-icons";
-import { TopBar } from "@/components/layout/top-bar";
-import { TwoPaneShell, type NavEntry } from "@/components/layout/two-pane-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { accentForTag, ui } from "@/lib/theme";
+import type { Folder, Note } from "@/lib/notes/types";
 
-type EntityId = "activities" | "goals" | "schedules" | "categories";
-type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
-
-interface EntityRecord {
-  id: string;
-  name: string;
-  entity: EntityId;
-  schedule: ScheduleType;
-  points: number;
+interface TreeProps {
+  folders: Folder[];
+  notes: Note[];
+  notesCountByFolder: Record<string, number>;
+  activeFolderId: string | null;
+  activeNoteId: string | null;
+  onSelectFolder: (id: string) => void;
+  onSelectNote: (id: string) => void;
+  onCreateChild: (parentId: string) => void;
+  onCreateNote: (folderId: string) => void;
+  onRename: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  onDeleteNote: (id: string) => void;
+  parentId?: string | null;
+  depth?: number;
 }
 
-const entities: NavEntry[] = [
-  { id: "activities", label: "Activities", icon: Activity01Icon },
-  { id: "goals", label: "Goals", icon: Target02Icon },
-  { id: "schedules", label: "Schedules", icon: Calendar03Icon },
-  { id: "categories", label: "Categories", icon: Tag01Icon },
-];
+export function FolderTree({ parentId = null, depth = 0, ...props }: TreeProps) {
+  const children = props.folders.filter((f) => f.parentId === parentId);
+  if (children.length === 0) return null;
+  return (
+    <div className="flex flex-col">
+      {children.map((folder) => (
+        <FolderNode key={folder.id} folder={folder} depth={depth} {...props} />
+      ))}
+    </div>
+  );
+}
 
-const seedRecords: EntityRecord[] = [
-  { id: "1", name: "Morning workout", entity: "activities", schedule: "daily", points: 100 },
-  { id: "2", name: "Ship Ascend v1", entity: "goals", schedule: "one-time", points: 500 },
-  { id: "3", name: "Weekly review", entity: "schedules", schedule: "weekly", points: 50 },
-];
+function FolderNode({
+  folder,
+  depth,
+  folders,
+  notes,
+  notesCountByFolder,
+  activeFolderId,
+  activeNoteId,
+  onSelectFolder,
+  onSelectNote,
+  onCreateChild,
+  onCreateNote,
+  onRename,
+  onDeleteFolder,
+  onDeleteNote,
+}: TreeProps & { folder: Folder; depth: number }) {
+  const [expanded, setExpanded] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(folder.name);
+  const hasChildren = folders.some((f) => f.parentId === folder.id);
+  const folderNotes = notes.filter((n) => n.folderId === folder.id);
+  const active = activeFolderId === folder.id && !activeNoteId;
+  const count = notesCountByFolder[folder.id] ?? 0;
 
-const scheduleTypes: ScheduleType[] = ["daily", "weekly", "one-time", "yearly"];
-
-
-
-export default function AdminView() {
-  const [records, setRecords] = useState<EntityRecord[]>(seedRecords);
-  const [activeEntity, setActiveEntity] = useState<EntityId>("activities");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<EntityRecord | null>(null);
-  const [form, setForm] = useState({ name: "", schedule: "daily" as ScheduleType, points: 0 });
-
-  const counts = entities.map((e) => ({
-    ...e,
-    count: records.filter((r) => r.entity === (e.id as EntityId)).length,
-  }));
-
-  const rows = records.filter((r) => r.entity === activeEntity);
-  const activeLabel = entities.find((e) => e.id === activeEntity)?.label ?? "";
-
-  function openCreate() {
-    setEditing(null);
-    setForm({ name: "", schedule: "daily", points: 0 });
-    setDialogOpen(true);
-  }
-
-  function openEdit(record: EntityRecord) {
-    setEditing(record);
-    setForm({ name: record.name, schedule: record.schedule, points: record.points });
-    setDialogOpen(true);
-  }
-
-  function save() {
-    if (!form.name.trim()) return;
-    if (editing) {
-      setRecords((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...form } : r)));
-    } else {
-      setRecords((prev) => [...prev, { id: crypto.randomUUID(), entity: activeEntity, ...form }]);
-    }
-    setDialogOpen(false);
-  }
-
-  function remove(id: string) {
-    setRecords((prev) => prev.filter((r) => r.id !== id));
+  function commit() {
+    const t = draft.trim();
+    if (t) onRename(folder.id, t);
+    setEditing(false);
   }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-background text-foreground">
-      <TopBar active="admin" level={12} streak={4} />
-
-      <TwoPaneShell
-        navTitle="Admin Panel"
-        entries={counts}
-        activeId={activeEntity}
-        onSelect={(id) => setActiveEntity(id as EntityId)}
+    <div>
+      <div
+        className={cn(
+          "group flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+          active && "bg-accent text-accent-foreground"
+        )}
+        style={{ paddingLeft: `${depth * 14 + 6}px` }}
       >
-        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
-          <span className="text-sm font-medium">{activeLabel}</span>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger render={
-              <Button size="sm" onClick={openCreate} className="h-7 gap-1.5 bg-amber-400 text-black hover:bg-amber-300">
-                <HugeiconsIcon icon={Add01Icon} size={14} />
-                New
-              </Button>
-            }>
-              
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
-                  {editing ? `Edit ${activeLabel.slice(0, -1)}` : `New ${activeLabel.slice(0, -1)}`}
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4 py-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="schedule">Schedule</Label>
-                  <select
-                    id="schedule"
-                    value={form.schedule}
-                    onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value as ScheduleType }))}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {scheduleTypes.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="points">Points</Label>
-                  <Input
-                    id="points"
-                    type="number"
-                    value={form.points}
-                    onChange={(e) => setForm((f) => ({ ...f, points: Number(e.target.value) }))}
-                  />
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={save} className="bg-amber-400 text-black hover:bg-amber-300">
-                  {editing ? "Save changes" : "Create"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {rows.length === 0 ? (
-            <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
-              <span className="text-sm text-muted-foreground">
-                No {activeLabel.toLowerCase()} yet.
-              </span>
-              <span className="text-xs text-muted-foreground/70">
-                Create one to start tracking it on the Dashboard.
-              </span>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-5 py-2 font-medium">Name</th>
-                  <th className="px-5 py-2 font-medium">Schedule</th>
-                  <th className="px-5 py-2 font-medium">Points</th>
-                  <th className="px-5 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-border/30 hover:bg-accent/30">
-                    <td className="px-5 py-2.5">{row.name}</td>
-                    <td className="px-5 py-2.5">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[11px] capitalize",
-                          SCHEDULE_STYLE[row.schedule]
-                        )}
-                      >
-                        {row.schedule}
-                      </span>
-                    </td>
-                    <td className="px-5 py-2.5 font-mono text-xs text-amber-400">
-                      +{row.points}
-                    </td>
-                    <td className="px-5 py-2.5">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(row)}
-                          aria-label="Edit"
-                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                        >
-                          <HugeiconsIcon icon={Edit02Icon} size={13} />
-                        </button>
-                        <button
-                          onClick={() => remove(row.id)}
-                          aria-label="Delete"
-                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </TwoPaneShell>
-    </div>
-  );
-}
-</file>
-
-<file path="src/components/dashboard/activity-bar.tsx">
-"use client";
-
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import {
-  DashboardSquare01Icon,
-  Target02Icon,
-  Book02Icon,
-  Settings02Icon,
-} from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
-
-interface ActivityItem {
-  id: string;
-  label: string;
-  icon: IconSvgElement;
-}
-
-const topItems: ActivityItem[] = [
-  { id: "dashboard", label: "Dashboard", icon: DashboardSquare01Icon },
-  { id: "self-management", label: "Self-Management", icon: Target02Icon },
-  { id: "journal", label: "Journal", icon: Book02Icon },
-];
-
-const bottomItems: ActivityItem[] = [
-  { id: "settings", label: "Settings", icon: Settings02Icon },
-];
-
-export function ActivityBar({
-  active = "dashboard",
-  onSelect,
-}: {
-  active?: string;
-  onSelect?: (id: string) => void;
-}) {
-  return (
-    <div className="flex h-full w-12 shrink-0 flex-col items-center justify-between border-r border-border/60 bg-muted/20 py-2">
-      <div className="flex flex-col items-center gap-1">
-        {topItems.map((item) => (
-          <ActivityButton
-            key={item.id}
-            item={item}
-            active={active === item.id}
-            onClick={() => onSelect?.(item.id)}
-          />
-        ))}
-      </div>
-      <div className="flex flex-col items-center gap-1">
-        {bottomItems.map((item) => (
-          <ActivityButton
-            key={item.id}
-            item={item}
-            active={active === item.id}
-            onClick={() => onSelect?.(item.id)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActivityButton({
-  item,
-  active,
-  onClick,
-}: {
-  item: ActivityItem;
-  active: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={item.label}
-      aria-label={item.label}
-      className={cn(
-        "relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground",
-        active && "text-foreground"
-      )}
-    >
-      {active ? (
-        <span className="absolute left-0 top-1.5 h-7 w-0.5 rounded-full bg-primary" />
-      ) : null}
-      <HugeiconsIcon icon={item.icon} size={20} />
-    </button>
-  );
-}
-</file>
-
-<file path="src/components/dashboard/collapsible-section.tsx">
-"use client";
-
-import { ReactNode, useState } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
-
-interface CollapsibleSectionProps {
-  title: string;
-  count?: number;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}
-
-export function CollapsibleSection({
-  title,
-  count,
-  defaultOpen = true,
-  children,
-}: CollapsibleSectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <div className="border-b border-border/40 last:border-b-0">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-7 w-full items-center gap-1.5 px-2 text-left hover:bg-accent/40"
-      >
-        <HugeiconsIcon
-          icon={open ? ArrowDown01Icon : ArrowRight01Icon}
-          size={12}
-          className="shrink-0 text-muted-foreground"
-        />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </span>
-        {typeof count === "number" ? (
-          <span className={cn("ml-auto text-[11px] text-muted-foreground")}>
-            {count}
-          </span>
-        ) : null}
-      </button>
-      {open ? <div className="pb-1">{children}</div> : null}
-    </div>
-  );
-}
-</file>
-
-<file path="src/components/dashboard/dashboard-view.tsx">
-"use client";
-
-import { CATEGORY, ALL_FILTER_META, SCHEDULE_STYLE, ui } from "@/lib/theme";
-
-import { useState } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import {
-  Fire02Icon,
-  UserSettings01Icon,
-  Target02Icon,
-  Activity01Icon,
-  Idea01Icon,
-  DashboardSquare01Icon,
-} from "@hugeicons/core-free-icons";
-import { TopBar } from "@/components/layout/top-bar";
-import { cn } from "@/lib/utils";
-
-type Category = "all" | "career" | "workout" | "improvement";
-
-
-
-interface Quest {
-  id: string;
-  title: string;
-  category: Exclude<Category, "all">;
-  points: number;
-  progress: number;
-  total: number;
-}
-
-const quests: Quest[] = [
-  { id: "1", title: "Deep work: ship one feature", category: "career", points: 100, progress: 0, total: 1 },
-  { id: "2", title: "Update resume / portfolio", category: "career", points: 100, progress: 0, total: 1 },
-  { id: "3", title: "30 min workout", category: "workout", points: 100, progress: 1, total: 1 },
-  { id: "4", title: "10k steps", category: "workout", points: 50, progress: 0, total: 1 },
-  { id: "5", title: "Write a journal entry", category: "improvement", points: 100, progress: 0, total: 1 },
-  { id: "6", title: "Read 20 pages", category: "improvement", points: 50, progress: 0, total: 1 },
-];
-
-interface GoalTrial {
-  id: string;
-  title: string;
-  progress: number;
-  total: number;
-  reward: string;
-}
-
-const goals: GoalTrial[] = [
-  { id: "1", title: "Finish Ascend v1", progress: 3, total: 6, reward: "Unlock streak freeze" },
-  { id: "2", title: "Land an internship", progress: 1, total: 5, reward: "Unlock weekly quests" },
-];
-
-const MILESTONES = [100, 200, 300, 400];
-const MAX_ENGAGEMENT = 400;
-
-export default function DashboardView() {
-  const [filter, setFilter] = useState<Category>("all");
-
-  const pointsToday = quests.reduce(
-    (sum, q) => sum + (q.progress >= q.total ? q.points : 0),
-    0
-  );
-  const visibleQuests = quests.filter(
-    (q) => filter === "all" || q.category === filter
-  );
-
-  return (
-    <div className="flex h-screen w-full flex-col bg-background text-foreground">
-      <TopBar active="dashboard" level={12} streak={4} />
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl space-y-5 p-6">
-          {/* Profile header */}
-          <div className="flex items-center gap-4 rounded-lg border border-border/60 bg-card/40 p-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 font-mono text-lg font-bold text-black">
-              12
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Level 12</span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  5,420 / 8,000 XP
-                </span>
-              </div>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300"
-                  style={{ width: "68%" }}
-                />
-              </div>
-            </div>
-            <button className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground">
-              <HugeiconsIcon icon={UserSettings01Icon} size={14} />
-              Account
-            </button>
-          </div>
-
-          {/* Today's engagement */}
-          <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium">Today&apos;s Engagement</span>
-              <span className="font-mono text-sm text-amber-400">
-                {pointsToday}
-                <span className="text-muted-foreground"> / {MAX_ENGAGEMENT}</span>
-              </span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all"
-                style={{
-                  width: `${Math.min(100, (pointsToday / MAX_ENGAGEMENT) * 100)}%`,
-                }}
-              />
-            </div>
-            <div className="mt-2 flex justify-between">
-              {MILESTONES.map((m) => {
-                const reached = pointsToday >= m;
-                return (
-                  <div key={m} className="flex flex-col items-center gap-1">
-                    <span
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full border-2",
-                        reached
-                          ? "border-amber-300 bg-amber-400"
-                          : "border-border bg-background"
-                      )}
-                    />
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {m}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quests */}
-          <div>
-            <div className="mb-3 flex items-center gap-1.5">
-              <FilterPill
-                label="All"
-                icon={DashboardSquare01Icon}
-                active={filter === "all"}
-                onClick={() => setFilter("all")}
-                activeClass="bg-foreground/10 text-foreground"
-              />
-              {(Object.keys(CATEGORY) as Array<keyof typeof CATEGORY>).map((key) => (
-                <FilterPill
-                  key={key}
-                  label={CATEGORY[key].label}
-                  icon={CATEGORY[key].icon}
-                  active={filter === key}
-                  onClick={() => setFilter(key)}
-                  activeClass={cn(CATEGORY[key].bg, CATEGORY[key].text)}
-                />
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {visibleQuests.map((quest) => (
-                <QuestCard key={quest.id} quest={quest} />
-              ))}
-            </div>
-          </div>
-
-          {/* Long-term goals */}
-          <div>
-            <span className="mb-3 block text-sm font-medium">Long-Term Goals</span>
-            <div className="space-y-2">
-              {goals.map((goal) => (
-                <div
-                  key={goal.id}
-                  className="rounded-lg border border-border/60 bg-card/40 p-3.5"
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">{goal.title}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {goal.progress}/{goal.total}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
-                    <div
-                      className="h-full rounded-full bg-cyan-400"
-                      style={{ width: `${(goal.progress / goal.total) * 100}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 text-[11px] text-muted-foreground">
-                    Reward: {goal.reward}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FilterPill({
-  label,
-  icon,
-  active,
-  onClick,
-  activeClass,
-}: {
-  label: string;
-  icon: IconSvgElement;
-  active: boolean;
-  onClick: () => void;
-  activeClass: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
-        active && cn("border-transparent", activeClass)
-      )}
-    >
-      <HugeiconsIcon icon={icon} size={13} />
-      {label}
-    </button>
-  );
-}
-
-function QuestCard({ quest }: { quest: Quest }) {
-  const meta = CATEGORY[quest.category];
-  const done = quest.progress >= quest.total;
-
-  return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-border/60 bg-card/40 p-3.5">
-      <div className="flex items-center justify-between">
-        <span
+        <button
+          onClick={() => setExpanded((e) => !e)}
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]",
-            meta.bg,
-            meta.text
+            "flex h-5 w-5 shrink-0 items-center justify-center transition-transform",
+            expanded && "rotate-90",
+            !hasChildren && folderNotes.length === 0 && "opacity-0"
           )}
         >
-          <HugeiconsIcon icon={meta.icon} size={11} />
-          {meta.label}
-        </span>
-        <span className="font-mono text-xs text-amber-400">+{quest.points}</span>
+          <HugeiconsIcon icon={ArrowRight01Icon} size={12} />
+        </button>
+
+        <button
+          onClick={() => onSelectFolder(folder.id)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
+        >
+          <HugeiconsIcon icon={Folder01Icon} size={14} className="shrink-0" />
+          {editing ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-transparent outline-none"
+            />
+          ) : (
+            <span className="truncate" onDoubleClick={() => setEditing(true)}>
+              {folder.name}
+            </span>
+          )}
+        </button>
+
+        {count > 0 && !editing ? <span className="font-mono text-[10px]">{count}</span> : null}
+
+        <div className="hidden items-center gap-0.5 group-hover:flex">
+          <button
+            onClick={() => onCreateNote(folder.id)}
+            aria-label="New note in folder"
+            title="New note"
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-background"
+          >
+            <HugeiconsIcon icon={File01Icon} size={11} />
+          </button>
+          <button
+            onClick={() => onCreateChild(folder.id)}
+            aria-label="New subfolder"
+            title="New subfolder"
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-background"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={11} />
+          </button>
+          <button
+            onClick={() => onDeleteFolder(folder.id)}
+            aria-label="Delete folder"
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-destructive/10 hover:text-destructive"
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={11} />
+          </button>
+        </div>
       </div>
 
-      <span className="text-[13px] font-medium leading-snug">{quest.title}</span>
-
-      {quest.total > 1 ? (
-        <div className="h-1 w-full overflow-hidden rounded-full bg-muted/40">
-          <div
-            className={cn("h-full rounded-full", meta.bar)}
-            style={{ width: `${(quest.progress / quest.total) * 100}%` }}
+      {expanded ? (
+        <div>
+          {folderNotes.map((note) => (
+            <NoteRow
+              key={note.id}
+              note={note}
+              depth={depth + 1}
+              active={activeNoteId === note.id}
+              onSelect={() => onSelectNote(note.id)}
+              onDelete={() => onDeleteNote(note.id)}
+            />
+          ))}
+          <FolderTree
+            folders={folders}
+            notes={notes}
+            notesCountByFolder={notesCountByFolder}
+            activeFolderId={activeFolderId}
+            activeNoteId={activeNoteId}
+            onSelectFolder={onSelectFolder}
+            onSelectNote={onSelectNote}
+            onCreateChild={onCreateChild}
+            onCreateNote={onCreateNote}
+            onRename={onRename}
+            onDeleteFolder={onDeleteFolder}
+            onDeleteNote={onDeleteNote}
+            parentId={folder.id}
+            depth={depth + 1}
           />
         </div>
       ) : null}
+    </div>
+  );
+}
 
+export function NoteRow({
+  note,
+  depth,
+  active,
+  onSelect,
+  onDelete,
+}: {
+  note: Note;
+  depth: number;
+  active: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex h-8 items-center gap-1.5 rounded-lg pr-1 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        active && "bg-accent text-accent-foreground"
+      )}
+      style={{ paddingLeft: `${depth * 14 + 26}px` }}
+    >
+      <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left">
+        <HugeiconsIcon icon={File01Icon} size={13} className="shrink-0" />
+        <span className="truncate">{note.title}</span>
+        {note.tags.length > 0 ? (
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", accentForTag(note.tags[0]).bar)} />
+        ) : null}
+      </button>
       <button
-        disabled={done}
-        className={cn(
-          "mt-1 h-7 rounded-md text-xs font-medium transition-colors",
-          done
-            ? "cursor-default bg-muted/40 text-muted-foreground"
-            : "bg-foreground text-background hover:opacity-90"
-        )}
+        onClick={onDelete}
+        aria-label="Delete note"
+        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-destructive/10 hover:text-destructive group-hover:flex"
       >
-        {done ? "Done" : "Go"}
+        <HugeiconsIcon icon={Delete02Icon} size={11} />
       </button>
     </div>
   );
 }
 </file>
 
-<file path="src/components/dashboard/panel-shell.tsx">
+<file path="src/components/notes/markdown-editor.tsx">
 "use client";
 
-import { ReactNode } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { useEffect, useRef } from "react";
+import { EditorState, Range } from "@codemirror/state";
+import {
+  EditorView,
+  Decoration,
+  DecorationSet,
+  ViewPlugin,
+  ViewUpdate,
+  keymap,
+} from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { markdown } from "@codemirror/lang-markdown";
 
-interface PanelAction {
-  icon: IconSvgElement;
-  label: string;
-  onClick?: () => void;
+const HEADER_RE = /^(#{1,6})\s+/;
+const BOLD_RE = /\*\*([^*\n]+)\*\*/g;
+const ITALIC_RE = /(?<!\*)\*([^*\n]+)\*(?!\*)|(?<!_)_([^_\n]+)_(?!_)/g;
+const CODE_RE = /`([^`\n]+)`/g;
+
+function buildDecorations(view: EditorView): DecorationSet {
+  const decos: Range<Decoration>[] = [];
+  const activeLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from;
+    while (pos <= to) {
+      const line = view.state.doc.lineAt(pos);
+      const text = line.text;
+      const isActive = line.number === activeLine;
+
+      const h = HEADER_RE.exec(text);
+      if (h) {
+        const level = h[1].length;
+        decos.push(Decoration.line({ class: `cm-heading cm-h${level}` }).range(line.from));
+        if (!isActive) {
+          decos.push(Decoration.replace({}).range(line.from, line.from + h[0].length));
+        }
+      }
+
+      let m: RegExpExecArray | null;
+      BOLD_RE.lastIndex = 0;
+      while ((m = BOLD_RE.exec(text))) {
+        const s = line.from + m.index;
+        const e = s + m[0].length;
+        if (!isActive) {
+          decos.push(Decoration.replace({}).range(s, s + 2));
+          decos.push(Decoration.mark({ class: "cm-bold" }).range(s + 2, e - 2));
+          decos.push(Decoration.replace({}).range(e - 2, e));
+        } else {
+          decos.push(Decoration.mark({ class: "cm-bold cm-mark" }).range(s, e));
+        }
+      }
+
+      ITALIC_RE.lastIndex = 0;
+      while ((m = ITALIC_RE.exec(text))) {
+        const s = line.from + m.index;
+        const e = s + m[0].length;
+        if (!isActive) {
+          decos.push(Decoration.replace({}).range(s, s + 1));
+          decos.push(Decoration.mark({ class: "cm-italic" }).range(s + 1, e - 1));
+          decos.push(Decoration.replace({}).range(e - 1, e));
+        } else {
+          decos.push(Decoration.mark({ class: "cm-italic cm-mark" }).range(s, e));
+        }
+      }
+
+      CODE_RE.lastIndex = 0;
+      while ((m = CODE_RE.exec(text))) {
+        const s = line.from + m.index;
+        const e = s + m[0].length;
+        if (!isActive) {
+          decos.push(Decoration.replace({}).range(s, s + 1));
+          decos.push(Decoration.mark({ class: "cm-code" }).range(s + 1, e - 1));
+          decos.push(Decoration.replace({}).range(e - 1, e));
+        } else {
+          decos.push(Decoration.mark({ class: "cm-code cm-mark" }).range(s, e));
+        }
+      }
+
+      pos = line.to + 1;
+    }
+  }
+
+  decos.sort((a, b) => a.from - b.from || (a as any).startSide - (b as any).startSide);
+  return Decoration.set(decos, true);
 }
 
-interface PanelShellProps {
-  title: string;
-  icon: IconSvgElement;
-  actions?: PanelAction[];
-  footer?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}
+const livePreview = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildDecorations(view);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.selectionSet || u.viewportChanged) {
+        this.decorations = buildDecorations(u.view);
+      }
+    }
+  },
+  { decorations: (v) => v.decorations }
+);
 
-export function PanelShell({
-  title,
-  icon,
-  actions = [],
-  footer,
-  children,
-  className,
-}: PanelShellProps) {
-  return (
-    <div className={cn("flex h-full min-w-0 flex-col bg-background", className)}>
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/30 px-3">
-        <HugeiconsIcon icon={icon} size={14} className="text-muted-foreground" />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </span>
-        <div className="ml-auto flex items-center gap-0.5">
-          {actions.map((action) => (
-            <button
-              key={action.label}
-              onClick={action.onClick}
-              aria-label={action.label}
-              title={action.label}
-              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-            >
-              <HugeiconsIcon icon={action.icon} size={14} />
-            </button>
-          ))}
-        </div>
-      </div>
+const theme = EditorView.theme({
+  "&": { fontSize: "15px", height: "100%" },
+  ".cm-content": { fontFamily: "var(--font-sans)", padding: "0", caretColor: "var(--foreground)" },
+  ".cm-line": { padding: "0 2px", lineHeight: "1.7" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-h1": { fontSize: "28px", fontWeight: "700" },
+  ".cm-h2": { fontSize: "22px", fontWeight: "700" },
+  ".cm-h3": { fontSize: "18px", fontWeight: "600" },
+  ".cm-h4, .cm-h5, .cm-h6": { fontSize: "16px", fontWeight: "600" },
+  ".cm-bold": { fontWeight: "700" },
+  ".cm-italic": { fontStyle: "italic" },
+  ".cm-code": {
+    fontFamily: "var(--font-mono)",
+    fontSize: "13px",
+    background: "var(--muted)",
+    borderRadius: "4px",
+    padding: "1px 4px",
+  },
+  ".cm-mark": { opacity: "0.4" },
+});
 
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col">{children}</div>
-      </ScrollArea>
-
-      {footer ? (
-        <div className="flex h-6 shrink-0 items-center border-t border-border/60 bg-muted/20 px-3 text-[11px] text-muted-foreground">
-          {footer}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-export function PanelRow({
-  icon,
-  label,
-  meta,
-  indent = 0,
-  active = false,
-  onClick,
+export function MarkdownEditor({
+  value,
+  onChange,
 }: {
-  icon?: IconSvgElement;
-  label: string;
-  meta?: string;
-  indent?: number;
-  active?: boolean;
-  onClick?: () => void;
+  value: string;
+  onChange: (value: string) => void;
 }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{ paddingLeft: 12 + indent * 16 }}
-      className={cn(
-        "flex h-7 w-full items-center gap-2 pr-3 text-left text-[13px] hover:bg-accent/50",
-        active && "bg-accent/70"
-      )}
-    >
-      {icon ? (
-        <HugeiconsIcon icon={icon} size={14} className="shrink-0 text-muted-foreground" />
-      ) : (
-        <span className="w-3.5 shrink-0" />
-      )}
-      <span className="truncate">{label}</span>
-      {meta ? (
-        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{meta}</span>
-      ) : null}
-    </button>
-  );
+  const hostRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          history(),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          markdown(),
+          livePreview,
+          EditorView.lineWrapping,
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+          }),
+          theme,
+        ],
+      }),
+      parent: hostRef.current,
+    });
+    viewRef.current = view;
+    return () => view.destroy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current !== value) {
+      view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+    }
+  }, [value]);
+
+  return <div ref={hostRef} className="h-full w-full" />;
 }
 </file>
 
-<file path="src/components/inbox/inbox-view.tsx">
+<file path="src/components/notes/notes-view.tsx">
 "use client";
 
-
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Idea01Icon,
-  Task01Icon,
-  StickyNote01Icon,
-  Link01Icon,
-  Tag01Icon,
   Add01Icon,
+  FolderAddIcon,
+  Search01Icon,
+  Delete02Icon,
 } from "@hugeicons/core-free-icons";
-import { TopBar } from "@/components/layout/top-bar";
-import { TwoPaneShell, type NavEntry } from "@/components/layout/two-pane-shell";
+import type { IconSvgElement } from "@hugeicons/react";
+import { FolderTree, NoteRow } from "@/components/notes/folder-tree";
+import { MarkdownEditor } from "@/components/notes/markdown-editor";
+import { ui } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+import type { Folder, Note } from "@/lib/notes/types";
 
-type FolderId = "ideas" | "tasks" | "notes" | "links" | "organize";
-
-interface InboxItem {
-  id: string;
-  label: string;
-  folder: FolderId;
+function formatTimestamp(ms: number): string {
+  const diff = Date.now() - ms;
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
-const folders: NavEntry[] = [
-  { id: "ideas", label: "Ideas", icon: Idea01Icon },
-  { id: "tasks", label: "Unprocessed tasks", icon: Task01Icon },
-  { id: "notes", label: "Notes", icon: StickyNote01Icon },
-  { id: "links", label: "Links", icon: Link01Icon },
-  { id: "organize", label: "To organize later", icon: Tag01Icon },
-];
+export default function NotesView() {
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
-const seedItems: InboxItem[] = [
-  { id: "1", label: "Try RRF re-ranking on the notebook retriever", folder: "ideas" },
-  { id: "2", label: "Renew gym membership before the 15th", folder: "tasks" },
-  { id: "3", label: "prisma.io/docs/mongodb-preview", folder: "links" },
-  { id: "4", label: "Note on convolution kernels from class", folder: "notes" },
-];
+  const notesCountByFolder = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const n of notes) {
+      let fid = n.folderId;
+      while (fid) {
+        counts[fid] = (counts[fid] ?? 0) + 1;
+        fid = folders.find((f) => f.id === fid)?.parentId ?? null;
+      }
+    }
+    return counts;
+  }, [notes, folders]);
 
-export default function InboxView() {
-  const [items, setItems] = useState<InboxItem[]>(seedItems);
-  const [activeFolder, setActiveFolder] = useState<FolderId>("ideas");
-  const [draft, setDraft] = useState("");
+  const rootNotes = notes.filter((n) => n.folderId === null);
 
-  const counts = folders.map((f) => ({
-    ...f,
-    count: items.filter((i) => i.folder === (f.id as FolderId)).length,
-  }));
+  const searchResults = useMemo(() => {
+    if (!query.trim()) return null;
+    const q = query.trim().toLowerCase();
+    return notes.filter((n) =>
+      (n.title + " " + n.content).toLowerCase().includes(q),
+    );
+  }, [notes, query]);
 
-  const visible = items.filter((i) => i.folder === activeFolder);
-  const activeLabel = folders.find((f) => f.id === activeFolder)?.label ?? "";
+  const activeNote = notes.find((n) => n.id === activeNoteId) ?? null;
 
-  function capture() {
-    const value = draft.trim();
-    if (!value) return;
-    setItems((prev) => [
-      { id: crypto.randomUUID(), label: value, folder: activeFolder },
+  function createFolder(parentId: string | null) {
+    setFolders((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), name: "New folder", parentId },
+    ]);
+  }
+
+  function renameFolder(id: string, name: string) {
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
+  }
+
+  function deleteFolder(id: string) {
+    const toDelete = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const f of folders) {
+        if (f.parentId && toDelete.has(f.parentId) && !toDelete.has(f.id)) {
+          toDelete.add(f.id);
+          changed = true;
+        }
+      }
+    }
+    setFolders((prev) => prev.filter((f) => !toDelete.has(f.id)));
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.folderId && toDelete.has(n.folderId) ? { ...n, folderId: null } : n,
+      ),
+    );
+    if (activeFolderId && toDelete.has(activeFolderId)) setActiveFolderId(null);
+  }
+
+  function createNote(folderId: string | null) {
+    const id = crypto.randomUUID();
+    setNotes((prev) => [
+      {
+        id,
+        title: "Untitled",
+        content: "",
+        folderId,
+        tags: [],
+        updatedAt: Date.now(),
+      },
       ...prev,
     ]);
-    setDraft("");
+    setActiveNoteId(id);
+    setActiveFolderId(folderId);
+  }
+
+  function deleteNote(id: string) {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    if (activeNoteId === id) setActiveNoteId(null);
+  }
+
+  function updateNoteContent(id: string, content: string) {
+    const firstLine = content
+      .split("\n")[0]
+      ?.replace(/^#+\s*/, "")
+      .trim();
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              content,
+              title: firstLine || "Untitled",
+              updatedAt: Date.now(),
+            }
+          : n,
+      ),
+    );
   }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-background text-foreground">
-      <TopBar active="inbox" level={12} streak={4} />
-
-      <TwoPaneShell
-        navTitle="Inbox"
-        entries={counts}
-        activeId={activeFolder}
-        onSelect={(id) => setActiveFolder(id as FolderId)}
-        navFooter={
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Capture first, organize later.
-          </p>
-        }
-      >
-        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
-          <span className="text-sm font-medium">{activeLabel}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {visible.length} item{visible.length === 1 ? "" : "s"}
-          </span>
-        </div>
-
-        <div className="border-b border-border/40 px-5 py-3">
-          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2 focus-within:border-amber-400/50">
-            <HugeiconsIcon icon={Add01Icon} size={15} className="shrink-0 text-muted-foreground" />
+    <div className="flex h-screen w-full bg-background text-foreground">
+      {/* Section 1 — folders + notes */}
+      <div className="flex w-72 shrink-0 flex-col border-r border-border">
+        <div className="flex items-center gap-1 border-b border-border px-2 py-2">
+          <IconAction
+            icon={Add01Icon}
+            label="New note"
+            onClick={() => createNote(activeFolderId)}
+          />
+          <IconAction
+            icon={FolderAddIcon}
+            label="New folder"
+            onClick={() => createFolder(null)}
+          />
+          <div className="ml-auto flex flex-1 items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 focus-within:border-brand/50 focus-within:bg-background">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              size={13}
+              className="shrink-0 text-muted-foreground"
+            />
             <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") capture();
-              }}
-              placeholder={`Add to ${activeLabel.toLowerCase()}…`}
-              className="h-5 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search"
+              className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-1">
-          {visible.length === 0 ? (
-            <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
-              <span className="text-sm text-muted-foreground">Nothing here yet.</span>
-              <span className="text-xs text-muted-foreground/70">
-                Whatever&apos;s on your mind goes here first.
-              </span>
-            </div>
+        <div className="flex-1 overflow-y-auto p-2">
+          {searchResults ? (
+            searchResults.length === 0 ? (
+              <p className={cn(ui.caption, "px-2 pt-2")}>No matches.</p>
+            ) : (
+              searchResults.map((note) => (
+                <NoteRow
+                  key={note.id}
+                  note={note}
+                  depth={0}
+                  active={activeNoteId === note.id}
+                  onSelect={() => setActiveNoteId(note.id)}
+                  onDelete={() => deleteNote(note.id)}
+                />
+              ))
+            )
           ) : (
-            visible.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-md px-3 py-2.5 text-sm hover:bg-accent/40"
-              >
-                {item.label}
-              </div>
-            ))
+            <>
+              {rootNotes.map((note) => (
+                <NoteRow
+                  key={note.id}
+                  note={note}
+                  depth={0}
+                  active={activeNoteId === note.id}
+                  onSelect={() => setActiveNoteId(note.id)}
+                  onDelete={() => deleteNote(note.id)}
+                />
+              ))}
+              <FolderTree
+                folders={folders}
+                notes={notes}
+                notesCountByFolder={notesCountByFolder}
+                activeFolderId={activeFolderId}
+                activeNoteId={activeNoteId}
+                onSelectFolder={setActiveFolderId}
+                onSelectNote={setActiveNoteId}
+                onCreateChild={createFolder}
+                onCreateNote={createNote}
+                onRename={renameFolder}
+                onDeleteFolder={deleteFolder}
+                onDeleteNote={deleteNote}
+              />
+              {folders.length === 0 && rootNotes.length === 0 ? (
+                <p className={cn(ui.caption, "px-2 pt-2")}>Nothing here yet.</p>
+              ) : null}
+            </>
           )}
         </div>
-      </TwoPaneShell>
-    </div>
-  );
-}
-</file>
+      </div>
 
-<file path="src/components/layout/top-bar.tsx">
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  InboxIcon,
-  Settings02Icon,
-  Fire02Icon,
-} from "@hugeicons/core-free-icons";
-import { cn } from "@/lib/utils";
-
-type Screen = "dashboard" | "inbox" | "admin";
-
-export function TopBar({
-  active,
-  level = 1,
-  streak = 0,
-}: {
-  active: Screen;
-  level?: number;
-  streak?: number;
-}) {
-  const router = useRouter();
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && active !== "dashboard") {
-        router.push("/dashboard");
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [active, router]);
-
-  return (
-    <div className="flex h-13 shrink-0 items-center justify-between border-b border-border/60 bg-background/95 px-4 backdrop-blur">
-      <button
-        onClick={() => router.push("/dashboard")}
-        className="flex items-center gap-2.5 hover:opacity-90"
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-amber-400 to-amber-600 text-[13px] font-bold text-black">
-          A
-        </span>
-        <span className="text-sm font-semibold tracking-[0.08em]">ASCEND</span>
-        <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-400">
-          LV {level}
-        </span>
-      </button>
-
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-          <HugeiconsIcon icon={Fire02Icon} size={13} className="text-rose-400" />
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {streak}d
-          </span>
-        </div>
-
-        <div className="h-5 w-px bg-border/60" />
-
-        <div className="flex items-center gap-1">
-          <NavIcon
-            icon={InboxIcon}
-            label="Inbox"
-            active={active === "inbox"}
-            onClick={() => router.push("/inbox")}
-          />
-          <NavIcon
-            icon={Settings02Icon}
-            label="Admin Panel"
-            active={active === "admin"}
-            onClick={() => router.push("/admin")}
-          />
-        </div>
+      {/* Section 2 — editor */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {activeNote ? (
+          <>
+            <div className="flex items-center justify-between border-b border-border px-6 py-3">
+              <span className={ui.caption}>
+                {formatTimestamp(activeNote.updatedAt)}
+              </span>
+              <button
+                onClick={() => deleteNote(activeNote.id)}
+                aria-label="Delete note"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-8 py-6">
+              <MarkdownEditor
+                key={activeNote.id}
+                value={activeNote.content}
+                onChange={(content) =>
+                  updateNoteContent(activeNote.id, content)
+                }
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <span className={ui.caption}>
+              Select or create a note to start writing.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function NavIcon({
+function IconAction({
   icon,
   label,
-  active,
   onClick,
 }: {
-  icon: typeof InboxIcon;
+  icon: IconSvgElement;
   label: string;
-  active: boolean;
   onClick: () => void;
 }) {
   return (
@@ -1126,442 +815,29 @@ function NavIcon({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
-        active && "bg-amber-400/10 text-amber-400 hover:bg-amber-400/15 hover:text-amber-400"
-      )}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
-      <HugeiconsIcon icon={icon} size={17} />
+      <HugeiconsIcon icon={icon} size={15} />
     </button>
   );
 }
 </file>
 
-<file path="src/components/layout/two-pane-shell.tsx">
-"use client";
-
-
-import { ReactNode } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import type { IconSvgElement } from "@hugeicons/react";
-import { cn } from "@/lib/utils";
-
-export interface NavEntry {
+<file path="src/lib/notes/types.ts">
+export interface Folder {
   id: string;
-  label: string;
-  icon: IconSvgElement;
-  count?: number;
+  name: string;
+  parentId: string | null;
 }
 
-export function TwoPaneShell({
-  navTitle,
-  entries,
-  activeId,
-  onSelect,
-  navFooter,
-  children,
-}: {
-  navTitle: string;
-  entries: NavEntry[];
-  activeId: string;
-  onSelect: (id: string) => void;
-  navFooter?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-1 min-h-0">
-      <div className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/10">
-        <div className="px-3 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          {navTitle}
-        </div>
-        <nav className="flex flex-col gap-0.5 px-2">
-          {entries.map((entry) => {
-            const isActive = activeId === entry.id;
-            return (
-              <button
-                key={entry.id}
-                onClick={() => onSelect(entry.id)}
-                className={cn(
-                  "group flex h-8.5 items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
-                  isActive && "bg-amber-400/10 text-foreground"
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-4 w-0.5 shrink-0 rounded-full bg-transparent",
-                    isActive && "bg-amber-400"
-                  )}
-                />
-                <HugeiconsIcon
-                  icon={entry.icon}
-                  size={15}
-                  className={cn("shrink-0", isActive && "text-amber-400")}
-                />
-                <span className="truncate">{entry.label}</span>
-                {typeof entry.count === "number" ? (
-                  <span
-                    className={cn(
-                      "ml-auto rounded-full px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground",
-                      entry.count > 0 && "bg-muted/60"
-                    )}
-                  >
-                    {entry.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-        {navFooter ? (
-          <div className="mt-auto border-t border-border/50 p-3">{navFooter}</div>
-        ) : null}
-      </div>
-
-      <div className="flex flex-1 min-w-0 flex-col">{children}</div>
-    </div>
-  );
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  folderId: string | null;
+  tags: string[];
+  updatedAt: number;
 }
-</file>
-
-<file path="src/components/ui/dialog.tsx">
-"use client"
-
-import * as React from "react"
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Cancel01Icon } from "@hugeicons/core-free-icons"
-
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
-}
-
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
-}
-
-function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
-}
-
-function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
-}
-
-function DialogOverlay({
-  className,
-  ...props
-}: DialogPrimitive.Backdrop.Props) {
-  return (
-    <DialogPrimitive.Backdrop
-      data-slot="dialog-overlay"
-      className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function DialogContent({
-  className,
-  children,
-  showCloseButton = true,
-  ...props
-}: DialogPrimitive.Popup.Props & {
-  showCloseButton?: boolean
-}) {
-  return (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-4 right-4"
-                size="icon-sm"
-              />
-            }
-          >
-            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Popup>
-    </DialogPortal>
-  )
-}
-
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
-      {...props}
-    />
-  )
-}
-
-function DialogFooter({
-  className,
-  showCloseButton = false,
-  children,
-  ...props
-}: React.ComponentProps<"div"> & {
-  showCloseButton?: boolean
-}) {
-  return (
-    <div
-      data-slot="dialog-footer"
-      className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>
-          Close
-        </DialogPrimitive.Close>
-      )}
-    </div>
-  )
-}
-
-function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
-  return (
-    <DialogPrimitive.Title
-      data-slot="dialog-title"
-      className={cn("font-heading leading-none font-medium", className)}
-      {...props}
-    />
-  )
-}
-
-function DialogDescription({
-  className,
-  ...props
-}: DialogPrimitive.Description.Props) {
-  return (
-    <DialogPrimitive.Description
-      data-slot="dialog-description"
-      className={cn(
-        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-  DialogTrigger,
-}
-</file>
-
-<file path="src/components/ui/resizable.tsx">
-"use client"
-
-import * as ResizablePrimitive from "react-resizable-panels"
-
-import { cn } from "@/lib/utils"
-
-function ResizablePanelGroup({
-  className,
-  ...props
-}: ResizablePrimitive.GroupProps) {
-  return (
-    <ResizablePrimitive.Group
-      data-slot="resizable-panel-group"
-      className={cn(
-        "flex h-full w-full aria-[orientation=vertical]:flex-col",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
-  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
-}
-
-function ResizableHandle({
-  withHandle,
-  className,
-  ...props
-}: ResizablePrimitive.SeparatorProps & {
-  withHandle?: boolean
-}) {
-  return (
-    <ResizablePrimitive.Separator
-      data-slot="resizable-handle"
-      className={cn(
-        "relative flex w-px items-center justify-center bg-border ring-offset-background after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:rotate-90",
-        className
-      )}
-      {...props}
-    >
-      {withHandle && (
-        <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />
-      )}
-    </ResizablePrimitive.Separator>
-  )
-}
-
-export { ResizableHandle, ResizablePanel, ResizablePanelGroup }
-</file>
-
-<file path="src/components/ui/scroll-area.tsx">
-"use client"
-
-import * as React from "react"
-import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
-
-import { cn } from "@/lib/utils"
-
-function ScrollArea({
-  className,
-  children,
-  ...props
-}: ScrollAreaPrimitive.Root.Props) {
-  return (
-    <ScrollAreaPrimitive.Root
-      data-slot="scroll-area"
-      className={cn("relative", className)}
-      {...props}
-    >
-      <ScrollAreaPrimitive.Viewport
-        data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
-      >
-        {children}
-      </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
-      <ScrollAreaPrimitive.Corner />
-    </ScrollAreaPrimitive.Root>
-  )
-}
-
-function ScrollBar({
-  className,
-  orientation = "vertical",
-  ...props
-}: ScrollAreaPrimitive.Scrollbar.Props) {
-  return (
-    <ScrollAreaPrimitive.Scrollbar
-      data-slot="scroll-area-scrollbar"
-      data-orientation={orientation}
-      orientation={orientation}
-      className={cn(
-        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
-        className
-      )}
-      {...props}
-    >
-      <ScrollAreaPrimitive.Thumb
-        data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-border"
-      />
-    </ScrollAreaPrimitive.Scrollbar>
-  )
-}
-
-export { ScrollArea, ScrollBar }
-</file>
-
-<file path="src/lib/theme.ts">
-import type { IconSvgElement } from "@hugeicons/react";
-import {
-  Target02Icon,
-  Activity01Icon,
-  Idea01Icon,
-  DashboardSquare01Icon,
-} from "@hugeicons/core-free-icons";
-
-export type Category = "career" | "workout" | "improvement";
-export type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
-
-interface CategoryMeta {
-  label: string;
-  icon: IconSvgElement;
-  text: string;
-  bg: string;
-  bar: string;
-}
-
-export const CATEGORY: Record<Category, CategoryMeta> = {
-  career: {
-    label: "Career",
-    icon: Target02Icon,
-    text: "text-cyan-400",
-    bg: "bg-cyan-400/10",
-    bar: "bg-cyan-400",
-  },
-  workout: {
-    label: "Workout",
-    icon: Activity01Icon,
-    text: "text-rose-400",
-    bg: "bg-rose-400/10",
-    bar: "bg-rose-400",
-  },
-  improvement: {
-    label: "Improvement",
-    icon: Idea01Icon,
-    text: "text-violet-400",
-    bg: "bg-violet-400/10",
-    bar: "bg-violet-400",
-  },
-};
-
-export const ALL_FILTER_META: Pick<CategoryMeta, "label" | "icon"> = {
-  label: "All",
-  icon: DashboardSquare01Icon,
-};
-
-export const SCHEDULE_STYLE: Record<ScheduleType, string> = {
-  daily: "bg-cyan-400/10 text-cyan-400",
-  weekly: "bg-violet-400/10 text-violet-400",
-  "one-time": "bg-amber-400/10 text-amber-400",
-  yearly: "bg-rose-400/10 text-rose-400",
-};
-
-// Reusable class fragments — change spacing/borders/surfaces app-wide from here.
-export const ui = {
-  panel: "rounded-lg border border-border/60 bg-card/40 p-4",
-  panelTight: "rounded-lg border border-border/60 bg-card/40 p-3.5",
-  pill: "rounded-full px-2 py-0.5 text-[11px]",
-  progressTrack: "h-2 w-full overflow-hidden rounded-full bg-muted/40",
-  progressTrackThin: "h-1.5 w-full overflow-hidden rounded-full bg-muted/40",
-  progressFillAmber:
-    "h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300",
-  mono: "font-mono text-xs text-amber-400",
-  sectionLabel: "text-sm font-medium",
-} as const;
 </file>
 
 <file path="public/file.svg">
@@ -1661,6 +937,14 @@ export default function VerifyEmailPage() {
 }
 </file>
 
+<file path="src/app/admin/page.tsx">
+import AdminView from "@/components/admin/admin-view";
+
+export default function Page() {
+  return <AdminView />;
+}
+</file>
+
 <file path="src/app/api/auth/[...all]/route.ts">
 import { auth } from "@/lib/auth";
 import { toNextJsHandler } from "better-auth/next-js";
@@ -1681,11 +965,243 @@ export default async function DashboardLayout({
 }
 </file>
 
-<file path="src/app/dashboard/page.tsx">
-import DashboardView from "@/components/dashboard/dashboard-view";
+<file path="src/app/inbox/page.tsx">
+import InboxView from "@/components/inbox/inbox-view";
 
 export default function Page() {
-  return <DashboardView />;
+  return <InboxView />;
+}
+</file>
+
+<file path="src/components/admin/admin-view.tsx">
+"use client";
+
+import { SCHEDULE_STYLE, ui } from "@/lib/theme";
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Activity01Icon,
+  Target02Icon,
+  Calendar03Icon,
+  Tag01Icon,
+  Add01Icon,
+  Edit02Icon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons";
+import { TopBar } from "@/components/layout/top-bar";
+import { TwoPaneShell, type NavEntry } from "@/components/layout/two-pane-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+type EntityId = "activities" | "goals" | "schedules" | "categories";
+type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
+
+interface EntityRecord {
+  id: string;
+  name: string;
+  entity: EntityId;
+  schedule: ScheduleType;
+  points: number;
+}
+
+const entities: NavEntry[] = [
+  { id: "activities", label: "Activities", icon: Activity01Icon },
+  { id: "goals", label: "Goals", icon: Target02Icon },
+  { id: "schedules", label: "Schedules", icon: Calendar03Icon },
+  { id: "categories", label: "Categories", icon: Tag01Icon },
+];
+
+const seedRecords: EntityRecord[] = [
+  { id: "1", name: "Morning workout", entity: "activities", schedule: "daily", points: 100 },
+  { id: "2", name: "Ship Ascend v1", entity: "goals", schedule: "one-time", points: 500 },
+  { id: "3", name: "Weekly review", entity: "schedules", schedule: "weekly", points: 50 },
+];
+
+const scheduleTypes: ScheduleType[] = ["daily", "weekly", "one-time", "yearly"];
+
+export default function AdminView() {
+  const [records, setRecords] = useState<EntityRecord[]>(seedRecords);
+  const [activeEntity, setActiveEntity] = useState<EntityId>("activities");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<EntityRecord | null>(null);
+  const [form, setForm] = useState({ name: "", schedule: "daily" as ScheduleType, points: 0 });
+
+  const counts = entities.map((e) => ({
+    ...e,
+    count: records.filter((r) => r.entity === (e.id as EntityId)).length,
+  }));
+
+  const rows = records.filter((r) => r.entity === activeEntity);
+  const activeLabel = entities.find((e) => e.id === activeEntity)?.label ?? "";
+
+  function openCreate() {
+    setEditing(null);
+    setForm({ name: "", schedule: "daily", points: 0 });
+    setDialogOpen(true);
+  }
+
+  function openEdit(record: EntityRecord) {
+    setEditing(record);
+    setForm({ name: record.name, schedule: record.schedule, points: record.points });
+    setDialogOpen(true);
+  }
+
+  function save() {
+    if (!form.name.trim()) return;
+    if (editing) {
+      setRecords((prev) => prev.map((r) => (r.id === editing.id ? { ...r, ...form } : r)));
+    } else {
+      setRecords((prev) => [...prev, { id: crypto.randomUUID(), entity: activeEntity, ...form }]);
+    }
+    setDialogOpen(false);
+  }
+
+  function remove(id: string) {
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <TopBar active="admin" level={12} streak={4} />
+
+      <TwoPaneShell
+        navTitle="Admin Panel"
+        entries={counts}
+        activeId={activeEntity}
+        onSelect={(id) => setActiveEntity(id as EntityId)}
+      >
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <span className={ui.sectionLabel}>{activeLabel}</span>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger
+              render={
+                <Button size="sm" onClick={openCreate} className="h-8 gap-1.5 rounded-xl">
+                  <HugeiconsIcon icon={Add01Icon} size={14} />
+                  New
+                </Button>
+              }
+            />
+            <DialogContent className="rounded-3xl p-6 shadow-dialog">
+              <DialogHeader>
+                <DialogTitle>
+                  {editing ? `Edit ${activeLabel.slice(0, -1)}` : `New ${activeLabel.slice(0, -1)}`}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="schedule">Schedule</Label>
+                  <select
+                    id="schedule"
+                    value={form.schedule}
+                    onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value as ScheduleType }))}
+                    className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  >
+                    {scheduleTypes.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="points">Points</Label>
+                  <Input
+                    id="points"
+                    type="number"
+                    value={form.points}
+                    onChange={(e) => setForm((f) => ({ ...f, points: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={save}>{editing ? "Save changes" : "Create"}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {rows.length === 0 ? (
+            <div className="flex h-40 flex-col items-center justify-center gap-1.5 text-center">
+              <span className="text-[15px] text-muted-foreground">
+                No {activeLabel.toLowerCase()} yet.
+              </span>
+              <span className={cn(ui.caption, "text-muted-foreground/70")}>
+                Create one to start tracking it on the Dashboard.
+              </span>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-6 py-3 font-medium">Name</th>
+                  <th className="px-6 py-3 font-medium">Schedule</th>
+                  <th className="px-6 py-3 font-medium">Points</th>
+                  <th className="px-6 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b border-border/60 transition-colors hover:bg-muted/50">
+                    <td className="px-6 py-3.5">{row.name}</td>
+                    <td className="px-6 py-3.5">
+                      <span className={cn(ui.pill, SCHEDULE_STYLE[row.schedule], "capitalize")}>
+                        {row.schedule}
+                      </span>
+                    </td>
+                    <td className={cn("px-6 py-3.5", ui.mono)}>+{row.points}</td>
+                    <td className="px-6 py-3.5">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(row)}
+                          aria-label="Edit"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <HugeiconsIcon icon={Edit02Icon} size={13} />
+                        </button>
+                        <button
+                          onClick={() => remove(row.id)}
+                          aria-label="Delete"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </TwoPaneShell>
+    </div>
+  );
 }
 </file>
 
@@ -1915,6 +1431,1217 @@ export function VerifyEmailPanel() {
 }
 </file>
 
+<file path="src/components/dashboard/activity-bar.tsx">
+"use client";
+
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  DashboardSquare01Icon,
+  Target02Icon,
+  Book02Icon,
+  Settings02Icon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+interface ActivityItem {
+  id: string;
+  label: string;
+  icon: IconSvgElement;
+}
+
+const topItems: ActivityItem[] = [
+  { id: "dashboard", label: "Dashboard", icon: DashboardSquare01Icon },
+  { id: "self-management", label: "Self-Management", icon: Target02Icon },
+  { id: "journal", label: "Journal", icon: Book02Icon },
+];
+
+const bottomItems: ActivityItem[] = [
+  { id: "settings", label: "Settings", icon: Settings02Icon },
+];
+
+export function ActivityBar({
+  active = "dashboard",
+  onSelect,
+}: {
+  active?: string;
+  onSelect?: (id: string) => void;
+}) {
+  return (
+    <div className="flex h-full w-12 shrink-0 flex-col items-center justify-between border-r border-border/60 bg-muted/20 py-2">
+      <div className="flex flex-col items-center gap-1">
+        {topItems.map((item) => (
+          <ActivityButton
+            key={item.id}
+            item={item}
+            active={active === item.id}
+            onClick={() => onSelect?.(item.id)}
+          />
+        ))}
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        {bottomItems.map((item) => (
+          <ActivityButton
+            key={item.id}
+            item={item}
+            active={active === item.id}
+            onClick={() => onSelect?.(item.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActivityButton({
+  item,
+  active,
+  onClick,
+}: {
+  item: ActivityItem;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={item.label}
+      aria-label={item.label}
+      className={cn(
+        "relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:text-foreground",
+        active && "text-foreground"
+      )}
+    >
+      {active ? (
+        <span className="absolute left-0 top-1.5 h-7 w-0.5 rounded-full bg-primary" />
+      ) : null}
+      <HugeiconsIcon icon={item.icon} size={20} />
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/collapsible-section.tsx">
+"use client";
+
+import { ReactNode, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+interface CollapsibleSectionProps {
+  title: string;
+  count?: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+export function CollapsibleSection({
+  title,
+  count,
+  defaultOpen = true,
+  children,
+}: CollapsibleSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border-b border-border/40 last:border-b-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 w-full items-center gap-1.5 px-2 text-left hover:bg-accent/40"
+      >
+        <HugeiconsIcon
+          icon={open ? ArrowDown01Icon : ArrowRight01Icon}
+          size={12}
+          className="shrink-0 text-muted-foreground"
+        />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </span>
+        {typeof count === "number" ? (
+          <span className={cn("ml-auto text-[11px] text-muted-foreground")}>
+            {count}
+          </span>
+        ) : null}
+      </button>
+      {open ? <div className="pb-1">{children}</div> : null}
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/dashboard-view.tsx">
+"use client";
+
+import { CATEGORY, ui } from "@/lib/theme";
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  UserSettings01Icon,
+  DashboardSquare01Icon,
+} from "@hugeicons/core-free-icons";
+
+import { cn } from "@/lib/utils";
+
+type Category = "all" | "career" | "workout" | "improvement";
+
+interface Quest {
+  id: string;
+  title: string;
+  category: Exclude<Category, "all">;
+  points: number;
+  progress: number;
+  total: number;
+}
+
+const quests: Quest[] = [
+  {
+    id: "1",
+    title: "Deep work: ship one feature",
+    category: "career",
+    points: 100,
+    progress: 0,
+    total: 1,
+  },
+  {
+    id: "2",
+    title: "Update resume / portfolio",
+    category: "career",
+    points: 100,
+    progress: 0,
+    total: 1,
+  },
+  {
+    id: "3",
+    title: "30 min workout",
+    category: "workout",
+    points: 100,
+    progress: 1,
+    total: 1,
+  },
+  {
+    id: "4",
+    title: "10k steps",
+    category: "workout",
+    points: 50,
+    progress: 0,
+    total: 1,
+  },
+  {
+    id: "5",
+    title: "Write a journal entry",
+    category: "improvement",
+    points: 100,
+    progress: 0,
+    total: 1,
+  },
+  {
+    id: "6",
+    title: "Read 20 pages",
+    category: "improvement",
+    points: 50,
+    progress: 0,
+    total: 1,
+  },
+];
+
+interface GoalTrial {
+  id: string;
+  title: string;
+  progress: number;
+  total: number;
+  reward: string;
+}
+
+const goals: GoalTrial[] = [
+  {
+    id: "1",
+    title: "Finish Ascend v1",
+    progress: 3,
+    total: 6,
+    reward: "Unlock streak freeze",
+  },
+  {
+    id: "2",
+    title: "Land an internship",
+    progress: 1,
+    total: 5,
+    reward: "Unlock weekly quests",
+  },
+];
+
+const MILESTONES = [100, 200, 300, 400];
+const MAX_ENGAGEMENT = 400;
+
+export default function DashboardView() {
+  const [filter, setFilter] = useState<Category>("all");
+
+  const pointsToday = quests.reduce(
+    (sum, q) => sum + (q.progress >= q.total ? q.points : 0),
+    0,
+  );
+  const visibleQuests = quests.filter(
+    (q) => filter === "all" || q.category === filter,
+  );
+
+  return (
+    <div className="dark flex h-screen w-full flex-col bg-background text-foreground">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl space-y-6 p-8">
+          {/* Profile header — M3 extra-large (28px) shape, elevated surface-container */}
+          <div className={cn(ui.panelHero, "flex items-center gap-4 !p-4")}>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/16 font-mono text-lg font-semibold text-brand">
+              12
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between">
+                <span className={ui.titleMedium}>Level 12</span>
+                <span className={cn(ui.caption, "font-mono")}>
+                  5,420 / 8,000 XP
+                </span>
+              </div>
+              <div className={cn(ui.progressTrackThin, "mt-2")}>
+                <div className={ui.progressFill} style={{ width: "68%" }} />
+              </div>
+            </div>
+            {/* Outlined button per M3 — pill shape, 8% state-layer hover */}
+            <button
+              className={cn(
+                ui.buttonSecondary,
+                "flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-xs",
+              )}
+            >
+              <HugeiconsIcon icon={UserSettings01Icon} size={14} />
+              Account
+            </button>
+          </div>
+
+          {/* Today's engagement */}
+          <div className={ui.panel}>
+            <div className="mb-4 flex items-center justify-between">
+              <span className={ui.sectionLabel}>Today&apos;s Engagement</span>
+              <span className={cn(ui.mono, "text-sm")}>
+                {pointsToday}
+                <span className="text-muted-foreground">
+                  {" "}
+                  / {MAX_ENGAGEMENT}
+                </span>
+              </span>
+            </div>
+            <div className={ui.progressTrack}>
+              <div
+                className={ui.progressFill}
+                style={{
+                  width: `${Math.min(100, (pointsToday / MAX_ENGAGEMENT) * 100)}%`,
+                }}
+              />
+            </div>
+            <div className="mt-3 flex justify-between">
+              {MILESTONES.map((m) => {
+                const reached = pointsToday >= m;
+                return (
+                  <div key={m} className="flex flex-col items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full border-2 transition-colors",
+                        reached
+                          ? "border-brand bg-brand"
+                          : "border-border bg-background",
+                      )}
+                    />
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {m}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quests */}
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterPill
+                label="All"
+                icon={DashboardSquare01Icon}
+                active={filter === "all"}
+                onClick={() => setFilter("all")}
+              />
+              {(Object.keys(CATEGORY) as Array<keyof typeof CATEGORY>).map(
+                (key) => (
+                  <FilterPill
+                    key={key}
+                    label={CATEGORY[key].label}
+                    icon={CATEGORY[key].icon}
+                    active={filter === key}
+                    onClick={() => setFilter(key)}
+                    activeClass={cn(CATEGORY[key].bg, CATEGORY[key].text)}
+                  />
+                ),
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleQuests.map((quest) => (
+                <QuestCard key={quest.id} quest={quest} />
+              ))}
+            </div>
+          </div>
+
+          {/* Long-term goals */}
+          <div className="space-y-4">
+            <span className={ui.sectionLabel}>Long-Term Goals</span>
+            <div className="space-y-3">
+              {goals.map((goal) => (
+                <div key={goal.id} className={ui.panelTight}>
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <span className={ui.titleMedium}>{goal.title}</span>
+                    <span className={cn(ui.caption, "font-mono")}>
+                      {goal.progress}/{goal.total}
+                    </span>
+                  </div>
+                  <div className={ui.progressTrackThin}>
+                    <div
+                      className={ui.progressFill}
+                      style={{
+                        width: `${(goal.progress / goal.total) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <div className={cn(ui.caption, "mt-2.5")}>
+                    Reward: {goal.reward}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterPill({
+  label,
+  icon,
+  active,
+  onClick,
+  activeClass,
+}: {
+  label: string;
+  icon: IconSvgElement;
+  active: boolean;
+  onClick: () => void;
+  activeClass?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        // M3 assist/filter chip: full (pill) shape, outlined by default, 8% state-layer hover
+        "flex items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground",
+        active &&
+          cn(
+            "border-transparent",
+            activeClass ?? "bg-accent text-accent-foreground",
+          ),
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={13} />
+      {label}
+    </button>
+  );
+}
+
+function QuestCard({ quest }: { quest: Quest }) {
+  const meta = CATEGORY[quest.category];
+  const done = quest.progress >= quest.total;
+
+  return (
+    <div
+      className={cn(
+        ui.panelTight,
+        "flex flex-col gap-3 transition-colors hover:bg-card/80",
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className={cn(ui.pill, meta.bg, meta.text)}>
+          <HugeiconsIcon icon={meta.icon} size={12} />
+          {meta.label}
+        </span>
+        <span className={ui.mono}>+{quest.points}</span>
+      </div>
+
+      <span className="text-[14px] font-medium leading-snug text-foreground">
+        {quest.title}
+      </span>
+
+      {quest.total > 1 ? (
+        <div className={ui.progressTrack}>
+          <div
+            className={cn("h-full rounded-full transition-all", meta.bar)}
+            style={{ width: `${(quest.progress / quest.total) * 100}%` }}
+          />
+        </div>
+      ) : null}
+
+      {/* Filled button (Go) / disabled state per M3 — pill shape */}
+      <button
+        disabled={done}
+        className={cn(
+          "mt-1 h-8 rounded-full text-xs font-medium transition-colors",
+          done
+            ? "cursor-default bg-muted text-muted-foreground"
+            : cn(ui.buttonPrimary),
+        )}
+      >
+        {done ? "Done" : "Go"}
+      </button>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/panel-shell.tsx">
+"use client";
+
+import { ReactNode } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
+interface PanelAction {
+  icon: IconSvgElement;
+  label: string;
+  onClick?: () => void;
+}
+
+interface PanelShellProps {
+  title: string;
+  icon: IconSvgElement;
+  actions?: PanelAction[];
+  footer?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}
+
+export function PanelShell({
+  title,
+  icon,
+  actions = [],
+  footer,
+  children,
+  className,
+}: PanelShellProps) {
+  return (
+    <div className={cn("flex h-full min-w-0 flex-col bg-background", className)}>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 bg-muted/30 px-3">
+        <HugeiconsIcon icon={icon} size={14} className="text-muted-foreground" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </span>
+        <div className="ml-auto flex items-center gap-0.5">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              aria-label={action.label}
+              title={action.label}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            >
+              <HugeiconsIcon icon={action.icon} size={14} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col">{children}</div>
+      </ScrollArea>
+
+      {footer ? (
+        <div className="flex h-6 shrink-0 items-center border-t border-border/60 bg-muted/20 px-3 text-[11px] text-muted-foreground">
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PanelRow({
+  icon,
+  label,
+  meta,
+  indent = 0,
+  active = false,
+  onClick,
+}: {
+  icon?: IconSvgElement;
+  label: string;
+  meta?: string;
+  indent?: number;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ paddingLeft: 12 + indent * 16 }}
+      className={cn(
+        "flex h-7 w-full items-center gap-2 pr-3 text-left text-[13px] hover:bg-accent/50",
+        active && "bg-accent/70"
+      )}
+    >
+      {icon ? (
+        <HugeiconsIcon icon={icon} size={14} className="shrink-0 text-muted-foreground" />
+      ) : (
+        <span className="w-3.5 shrink-0" />
+      )}
+      <span className="truncate">{label}</span>
+      {meta ? (
+        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{meta}</span>
+      ) : null}
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/inbox/inbox-view.tsx">
+"use client";
+
+import { useMemo, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Idea01Icon,
+  Task01Icon,
+  StickyNote01Icon,
+  Link01Icon,
+  Tag01Icon,
+  Add01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { ItemComposer, type NewItemPayload } from "@/components/inbox/item-composer";
+import { ACCENT, FOLDER_ACCENT, ui } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+
+type FolderId = "ideas" | "tasks" | "notes" | "links" | "organize";
+type SortOrder = "newest" | "oldest";
+
+interface InboxItem {
+  id: string;
+  title: string;
+  body: string;
+  folder: FolderId;
+  createdAt: number;
+}
+
+const folders = [
+  { id: "ideas" as FolderId, label: "Ideas", icon: Idea01Icon },
+  { id: "tasks" as FolderId, label: "Unprocessed tasks", icon: Task01Icon },
+  { id: "notes" as FolderId, label: "Notes", icon: StickyNote01Icon },
+  { id: "links" as FolderId, label: "Links", icon: Link01Icon },
+  { id: "organize" as FolderId, label: "To organize later", icon: Tag01Icon },
+];
+
+const now = Date.now();
+const DAY = 86_400_000;
+
+const seedItems: InboxItem[] = [
+  {
+    id: "1",
+    title: "Try RRF re-ranking on the notebook retriever",
+    body: "Blend BM25 and dense retrieval scores with reciprocal rank fusion, compare against the current cosine-only baseline.",
+    folder: "ideas",
+    createdAt: now - 2 * 60 * 60 * 1000,
+  },
+  {
+    id: "2",
+    title: "Renew gym membership before the 15th",
+    body: "Auto-renew is off this cycle, do it manually or lose the founding-member rate.",
+    folder: "tasks",
+    createdAt: now - 20 * 60 * 60 * 1000,
+  },
+  {
+    id: "3",
+    title: "prisma.io/docs/mongodb-preview",
+    body: "MongoDB connector docs — check if the preview flag is still required in 6.x.",
+    folder: "links",
+    createdAt: now - 2 * DAY,
+  },
+  {
+    id: "4",
+    title: "Note on convolution kernels from class",
+    body: "Separable kernels reduce a 2D conv to two 1D passes — big win for large kernel sizes.",
+    folder: "notes",
+    createdAt: now - 6 * DAY,
+  },
+];
+
+function formatTimestamp(ms: number): string {
+  const diff = now - ms;
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export default function InboxView() {
+  const [items, setItems] = useState<InboxItem[]>(seedItems);
+  const [activeFolder, setActiveFolder] = useState<FolderId>("ideas");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortOrder>("newest");
+  const [composerOpen, setComposerOpen] = useState(false);
+
+  const activeLabel = folders.find((f) => f.id === activeFolder)?.label ?? "";
+
+  const visible = useMemo(() => {
+    const filtered = items
+      .filter((i) => i.folder === activeFolder)
+      .filter((i) =>
+        query.trim()
+          ? (i.title + " " + i.body).toLowerCase().includes(query.trim().toLowerCase())
+          : true
+      );
+    return filtered.sort((a, b) =>
+      sort === "newest" ? b.createdAt - a.createdAt : a.createdAt - b.createdAt
+    );
+  }, [items, activeFolder, query, sort]);
+
+  function handleCreate(payload: NewItemPayload) {
+    setItems((prev) => [
+      {
+        id: crypto.randomUUID(),
+        title: payload.title,
+        body: payload.body,
+        folder: payload.folder as FolderId,
+        createdAt: Date.now(),
+      },
+      ...prev,
+    ]);
+    setActiveFolder(payload.folder as FolderId);
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6">
+        {/* Folder pills — stand-in for the removed sidebar */}
+        <div className="flex flex-wrap items-center gap-2 pt-6">
+          {folders.map((f) => {
+            const accent = ACCENT[FOLDER_ACCENT[f.id] ?? "gray"];
+            const active = activeFolder === f.id;
+            const count = items.filter((i) => i.folder === f.id).length;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setActiveFolder(f.id)}
+                className={cn(
+                  ui.pill,
+                  "border border-border text-muted-foreground transition-colors hover:text-foreground",
+                  active && cn("border-transparent", accent.bg, accent.text)
+                )}
+              >
+                <HugeiconsIcon icon={f.icon} size={12} />
+                {f.label}
+                {count > 0 ? <span className="font-mono text-[10px] opacity-70">{count}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 border-b border-border py-5 mt-4">
+          <h1 className="text-[26px] font-bold leading-none tracking-tight">{activeLabel}</h1>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 transition-colors focus-within:border-brand/50 focus-within:bg-background">
+              <HugeiconsIcon icon={Search01Icon} size={15} className="text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search"
+                className="w-40 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOrder)}
+              className="h-[38px] rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none"
+            >
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+
+            <button
+              onClick={() => setComposerOpen(true)}
+              className="flex h-[38px] items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-soft transition-opacity hover:opacity-90"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={15} />
+              New
+            </button>
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {visible.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-1.5 text-center">
+              <span className="text-[15px] text-muted-foreground">Nothing here yet.</span>
+              <span className={cn(ui.caption, "text-muted-foreground/70")}>
+                Whatever&apos;s on your mind goes here first.
+              </span>
+            </div>
+          ) : (
+            visible.map((item) => {
+              const accent = ACCENT[FOLDER_ACCENT[item.folder] ?? "gray"];
+              return (
+                <button
+                  key={item.id}
+                  className="flex w-full items-center justify-between gap-6 border-b border-border/60 py-4 text-left transition-colors hover:bg-muted/40"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", accent.bar)} />
+                      <span className="truncate text-[15px] font-medium">{item.title}</span>
+                    </div>
+                    {item.body ? (
+                      <p className="mt-1 truncate pl-3.5 text-[13px] text-muted-foreground">
+                        {item.body}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {formatTimestamp(item.createdAt)}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <ItemComposer
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        folders={folders}
+        defaultFolder={activeFolder}
+        onCreate={handleCreate}
+      />
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/inbox/item-composer.tsx">
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  TextBoldIcon,
+  TextItalicIcon,
+  TextUnderlineIcon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ACCENT, FOLDER_ACCENT, ui } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+
+export interface ComposerFolder {
+  id: string;
+  label: string;
+  icon: IconSvgElement;
+}
+
+export interface NewItemPayload {
+  title: string;
+  body: string;
+  folder: string;
+}
+
+export function ItemComposer({
+  open,
+  onOpenChange,
+  folders,
+  defaultFolder,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  folders: ComposerFolder[];
+  defaultFolder: string;
+  onCreate: (item: NewItemPayload) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [folder, setFolder] = useState(defaultFolder);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTitle("");
+      setBody("");
+      setFolder(defaultFolder);
+    }
+  }, [open, defaultFolder]);
+
+  function wrapSelection(mark: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const { selectionStart, selectionEnd, value } = el;
+    const selected = value.slice(selectionStart, selectionEnd) || "text";
+    const next =
+      value.slice(0, selectionStart) +
+      mark +
+      selected +
+      mark +
+      value.slice(selectionEnd);
+    setBody(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(
+        selectionStart + mark.length,
+        selectionStart + mark.length + selected.length,
+      );
+    });
+  }
+
+  function handleCreate() {
+    if (!title.trim()) return;
+    onCreate({ title: title.trim(), body: body.trim(), folder });
+    onOpenChange(false);
+  }
+
+  function handleDiscard() {
+    setTitle("");
+    setBody("");
+    onOpenChange(false);
+  }
+
+  const canCreate = title.trim().length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[440px] max-w-[92vw] rounded-3xl p-6 shadow-dialog">
+        {/* Title field — acts as the dialog heading */}
+        <input
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+          className="w-full bg-transparent text-[20px] font-semibold leading-tight text-foreground outline-none placeholder:text-muted-foreground/60"
+        />
+
+        {/* Folder / tag picker */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {folders.map((f) => {
+            const accent = ACCENT[FOLDER_ACCENT[f.id] ?? "gray"];
+            const active = folder === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFolder(f.id)}
+                className={cn(
+                  ui.pill,
+                  "border border-border text-muted-foreground transition-colors hover:text-foreground",
+                  active && cn("border-transparent", accent.bg, accent.text),
+                )}
+              >
+                <HugeiconsIcon icon={f.icon} size={12} />
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Body */}
+        <div className="mt-5">
+          <textarea
+            ref={bodyRef}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Write something…"
+            rows={6}
+            className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60"
+          />
+        </div>
+
+        {/* Format toolbar */}
+        <div className="mt-2 flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1.5 shadow-soft w-fit">
+          <ToolbarIcon
+            icon={TextBoldIcon}
+            label="Bold"
+            onClick={() => wrapSelection("**")}
+          />
+          <ToolbarIcon
+            icon={TextItalicIcon}
+            label="Italic"
+            onClick={() => wrapSelection("_")}
+          />
+          <ToolbarIcon
+            icon={TextUnderlineIcon}
+            label="Underline"
+            onClick={() => wrapSelection("__")}
+          />
+        </div>
+
+        <DialogFooter className="mt-6 flex items-center justify-between sm:justify-between">
+          <button
+            onClick={handleDiscard}
+            aria-label="Discard"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={15} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!canCreate}
+              onClick={handleCreate}
+              className="rounded-xl"
+            >
+              Create
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ToolbarIcon({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: IconSvgElement;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+    >
+      <HugeiconsIcon icon={icon} size={14} />
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/layout/nav-shortcuts.tsx">
+"use client";
+
+import { useNavShortcuts } from "@/lib/hooks/use-nav-shortcuts";
+
+export function NavShortcuts() {
+  useNavShortcuts();
+  return null;
+}
+</file>
+
+<file path="src/components/layout/top-bar.tsx">
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  InboxIcon,
+  Settings02Icon,
+  Fire02Icon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+type Screen = "dashboard" | "inbox" | "admin";
+
+export function TopBar({
+  active,
+  level = 1,
+  streak = 0,
+}: {
+  active: Screen;
+  level?: number;
+  streak?: number;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && active !== "dashboard") {
+        router.push("/dashboard");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, router]);
+
+  return (
+    <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background/95 px-5 backdrop-blur">
+      <button
+        onClick={() => router.push("/dashboard")}
+        className="flex items-center gap-2.5 transition-opacity hover:opacity-80"
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-[13px] font-semibold text-primary-foreground">
+          A
+        </span>
+        <span className="text-sm font-semibold tracking-[0.06em]">ASCEND</span>
+        <span className="rounded-md border border-brand/20 bg-brand/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-brand">
+          LV {level}
+        </span>
+      </button>
+
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5">
+          <HugeiconsIcon icon={Fire02Icon} size={13} className="text-rose-500" />
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {streak}d
+          </span>
+        </div>
+
+        <div className="h-5 w-px bg-border" />
+
+        <div className="flex items-center gap-1">
+          <NavIcon
+            icon={InboxIcon}
+            label="Inbox"
+            active={active === "inbox"}
+            onClick={() => router.push("/inbox")}
+          />
+          <NavIcon
+            icon={Settings02Icon}
+            label="Admin Panel"
+            active={active === "admin"}
+            onClick={() => router.push("/admin")}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NavIcon({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof InboxIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        active && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
+      )}
+    >
+      <HugeiconsIcon icon={icon} size={17} />
+    </button>
+  );
+}
+</file>
+
+<file path="src/components/layout/two-pane-shell.tsx">
+"use client";
+
+import { ReactNode } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import { cn } from "@/lib/utils";
+
+export interface NavEntry {
+  id: string;
+  label: string;
+  icon: IconSvgElement;
+  count?: number;
+}
+
+export function TwoPaneShell({
+  navTitle,
+  entries,
+  activeId,
+  onSelect,
+  navFooter,
+  children,
+}: {
+  navTitle: string;
+  entries: NavEntry[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  navFooter?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-1 min-h-0">
+      <div className="flex w-60 shrink-0 flex-col border-r border-border bg-muted/20">
+        <div className="px-4 pb-2.5 pt-4 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          {navTitle}
+        </div>
+        <nav className="flex flex-col gap-0.5 px-3">
+          {entries.map((entry) => {
+            const isActive = activeId === entry.id;
+            return (
+              <button
+                key={entry.id}
+                onClick={() => onSelect(entry.id)}
+                className={cn(
+                  "group flex h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                  isActive && "bg-accent text-accent-foreground"
+                )}
+              >
+                <HugeiconsIcon
+                  icon={entry.icon}
+                  size={15}
+                  className="shrink-0"
+                />
+                <span className="truncate">{entry.label}</span>
+                {typeof entry.count === "number" ? (
+                  <span
+                    className={cn(
+                      "ml-auto rounded-full px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground",
+                      entry.count > 0 && "bg-background/60"
+                    )}
+                  >
+                    {entry.count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+        {navFooter ? (
+          <div className="mt-auto border-t border-border p-4">{navFooter}</div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-1 min-w-0 flex-col">{children}</div>
+    </div>
+  );
+}
+</file>
+
 <file path="src/components/ui/button.tsx">
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -1999,6 +2726,166 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
 export { Card, CardHeader, CardTitle, CardDescription, CardContent };
 </file>
 
+<file path="src/components/ui/dialog.tsx">
+"use client"
+
+import * as React from "react"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Cancel01Icon } from "@hugeicons/core-free-icons"
+
+function Dialog({ ...props }: DialogPrimitive.Root.Props) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}
+
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+}
+
+function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+}
+
+function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
+}
+
+function DialogOverlay({
+  className,
+  ...props
+}: DialogPrimitive.Backdrop.Props) {
+  return (
+    <DialogPrimitive.Backdrop
+      data-slot="dialog-overlay"
+      className={cn(
+        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: DialogPrimitive.Popup.Props & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Popup
+        data-slot="dialog-content"
+        className={cn(
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            render={
+              <Button
+                variant="ghost"
+                className="absolute top-4 right-4"
+                size="icon-sm"
+              />
+            }
+          >
+            <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Popup>
+    </DialogPortal>
+  )
+}
+
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogFooter({
+  className,
+  showCloseButton = false,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      {showCloseButton && (
+        <DialogPrimitive.Close render={<Button variant="outline" />}>
+          Close
+        </DialogPrimitive.Close>
+      )}
+    </div>
+  )
+}
+
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("font-heading leading-none font-medium", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogDescription({
+  className,
+  ...props
+}: DialogPrimitive.Description.Props) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn(
+        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+}
+</file>
+
 <file path="src/components/ui/input.tsx">
 import * as React from "react";
 
@@ -2039,44 +2926,158 @@ function Label({ className, ...props }: React.ComponentProps<"label">) {
 export { Label };
 </file>
 
-<file path="src/components/brand-logo.tsx">
-import Link from "next/link";
-import { Sun02Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { cn } from "@/lib/utils";
+<file path="src/components/ui/resizable.tsx">
+"use client"
 
-export function BrandLogo({
+import * as ResizablePrimitive from "react-resizable-panels"
+
+import { cn } from "@/lib/utils"
+
+function ResizablePanelGroup({
   className,
-  link = true,
-}: {
-  className?: string;
-  link?: boolean;
-}) {
-  const content = (
-    // <span
-    //   className={cn(
-    //     "inline-flex items-center gap-2 font-bold tracking-tight",
-    //     className,
-    //   )}
-    // >
-    //   <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
-    //     <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
-    //   </span>
-      <span>Ascend</span>
-    // {/* </span> */}
-  );
-  return link ? (
-    <Link href="/" aria-label="Ascend home">
-      {content}
-    </Link>
-  ) : (
-    content
-  );
+  ...props
+}: ResizablePrimitive.GroupProps) {
+  return (
+    <ResizablePrimitive.Group
+      data-slot="resizable-panel-group"
+      className={cn(
+        "flex h-full w-full aria-[orientation=vertical]:flex-col",
+        className
+      )}
+      {...props}
+    />
+  )
 }
+
+function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
+  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+}
+
+function ResizableHandle({
+  withHandle,
+  className,
+  ...props
+}: ResizablePrimitive.SeparatorProps & {
+  withHandle?: boolean
+}) {
+  return (
+    <ResizablePrimitive.Separator
+      data-slot="resizable-handle"
+      className={cn(
+        "relative flex w-px items-center justify-center bg-border ring-offset-background after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:rotate-90",
+        className
+      )}
+      {...props}
+    >
+      {withHandle && (
+        <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />
+      )}
+    </ResizablePrimitive.Separator>
+  )
+}
+
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup }
+</file>
+
+<file path="src/components/ui/scroll-area.tsx">
+"use client"
+
+import * as React from "react"
+import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
+
+import { cn } from "@/lib/utils"
+
+function ScrollArea({
+  className,
+  children,
+  ...props
+}: ScrollAreaPrimitive.Root.Props) {
+  return (
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className={cn("relative", className)}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        data-slot="scroll-area-viewport"
+        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  )
+}
+
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: ScrollAreaPrimitive.Scrollbar.Props) {
+  return (
+    <ScrollAreaPrimitive.Scrollbar
+      data-slot="scroll-area-scrollbar"
+      data-orientation={orientation}
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        className
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Thumb
+        data-slot="scroll-area-thumb"
+        className="relative flex-1 rounded-full bg-border"
+      />
+    </ScrollAreaPrimitive.Scrollbar>
+  )
+}
+
+export { ScrollArea, ScrollBar }
 </file>
 
 <file path="src/features/dashboard/index.ts">
 
+</file>
+
+<file path="src/lib/hooks/use-nav-shortcuts.ts">
+"use client";
+
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+
+const SHORTCUTS: Record<string, string> = {
+  "1": "/notes",
+  "2": "/admin",
+};
+
+export function useNavShortcuts() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Don't hijack Escape/Ctrl+N if a dialog or input already handled it.
+      if (e.defaultPrevented) return;
+
+      const mod = e.metaKey || e.altKey;
+
+      if (mod && SHORTCUTS[e.key]) {
+        e.preventDefault();
+        router.push(SHORTCUTS[e.key]);
+        return;
+      }
+
+      if (e.key === "Escape" && pathname !== "/dashboard") {
+        router.push("/dashboard");
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [router, pathname]);
+}
 </file>
 
 <file path="src/lib/prisma.ts">
@@ -2090,6 +3091,163 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}
+</file>
+
+<file path="src/lib/theme.ts">
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  Target02Icon,
+  Activity01Icon,
+  Idea01Icon,
+  DashboardSquare01Icon,
+} from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
+
+/**
+ * ── Material 3 token bridge ──────────────────────────────────────────
+ * Derived from the M3 Design Kit (figma.com/design/voD6I11ZFUY7ZVPkHR0vJI).
+ * Three rules carried over from that kit, applied in dark mode:
+ *
+ * 1. Color ROLES, not raw hexes — everything below points at CSS
+ *    variables (bg-card, bg-accent, text-muted-foreground, …) defined
+ *    in globals.css, so swapping the scheme never touches component code.
+ * 2. Shape scale — sm(8) / md(12) / lg(16) / xl(28) / full(pill), used
+ *    consistently instead of ad hoc rounded-lg / rounded-2xl mixing.
+ * 3. State layers — hover/press are opacity overlays on the role color
+ *    (8% hover, 12% active), not a swap to an unrelated color.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/** Base accent tokens — pick from these for any categorized entity. */
+export type Accent = "blue" | "green" | "amber" | "violet" | "rose" | "gray";
+
+interface AccentMeta {
+  text: string;
+  bg: string;
+  bar: string;
+}
+
+/**
+ * M3 "container" pairing: a low-opacity tonal background (bg) with a
+ * full-strength foreground (text) of the same hue — the same pattern
+ * as primary/primary-container in the M3 kit, applied to each accent.
+ */
+export const ACCENT: Record<Accent, AccentMeta> = {
+  blue: { text: "text-brand", bg: "bg-brand/12", bar: "bg-brand" },
+  green: { text: "text-success", bg: "bg-success/12", bar: "bg-success" },
+  amber: { text: "text-warning", bg: "bg-warning/12", bar: "bg-warning" },
+  violet: { text: "text-violet-300", bg: "bg-violet-400/12", bar: "bg-violet-300" },
+  rose: { text: "text-rose-300", bg: "bg-rose-400/12", bar: "bg-rose-300" },
+  gray: { text: "text-muted-foreground", bg: "bg-muted", bar: "bg-muted-foreground" },
+};
+
+/** Dashboard quest categories — colors sourced from ACCENT. */
+export type Category = "career" | "workout" | "improvement";
+
+interface CategoryMeta {
+  label: string;
+  icon: IconSvgElement;
+  text: string;
+  bg: string;
+  bar: string;
+}
+
+export const CATEGORY: Record<Category, CategoryMeta> = {
+  career: { label: "Career", icon: Target02Icon, ...ACCENT.blue },
+  workout: { label: "Workout", icon: Activity01Icon, ...ACCENT.rose },
+  improvement: { label: "Improvement", icon: Idea01Icon, ...ACCENT.violet },
+};
+
+export const ALL_FILTER_META: Pick<CategoryMeta, "label" | "icon"> = {
+  label: "All",
+  icon: DashboardSquare01Icon,
+};
+
+export type ScheduleType = "daily" | "weekly" | "one-time" | "yearly";
+
+export const SCHEDULE_STYLE: Record<ScheduleType, string> = {
+  daily: cn(ACCENT.blue.bg, ACCENT.blue.text),
+  weekly: cn(ACCENT.violet.bg, ACCENT.violet.text),
+  "one-time": cn(ACCENT.amber.bg, ACCENT.amber.text),
+  yearly: cn(ACCENT.rose.bg, ACCENT.rose.text),
+};
+
+/**
+ * Reusable class fragments — M3 shape scale (sm 8 / md 12 / lg 16 / xl 28 / full)
+ * and surface-container tiers stand in for the old ad hoc radii + shadow-soft.
+ * Spacing scale unchanged: micro 4 / icon-gap 8 / component 16 / section 24 / layout 32.
+ */
+export const ui = {
+  // Layout spacing
+  gapIcon: "gap-2",
+  gapComponent: "gap-4",
+  spaceComponent: "space-y-4",
+  spaceSection: "space-y-6",
+  spaceLayout: "space-y-8",
+
+  // Surfaces — M3 elevation is expressed as a lighter surface-container
+  // tone rather than shadow, so shadows here are near-invisible on purpose.
+  panel: "rounded-[16px] border border-border/60 bg-card p-4 shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
+  panelTight: "rounded-[12px] border border-border/60 bg-card p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
+  panelHero: "rounded-[28px] border border-border/60 bg-card p-6 shadow-[0_1px_3px_rgba(0,0,0,0.4)]",
+  surfaceMuted: "rounded-[12px] bg-muted",
+  surfaceContainerHigh: "rounded-[12px] bg-popover",
+
+  // Tags / pills — full (pill) shape per M3 shape scale
+  pill: "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium",
+  mentionPill: "inline-flex items-center gap-1 rounded-full bg-mention px-2.5 py-1 text-[13px] font-medium text-mention-foreground",
+
+  // Buttons — filled / filled-tonal / outlined per M3, with 8% state-layer hover
+  buttonPrimary:
+    "rounded-full bg-primary text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.4)] transition-colors hover:bg-primary/90",
+  buttonTonal:
+    "rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent/80",
+  buttonSecondary:
+    "rounded-full border border-border bg-transparent text-foreground transition-colors hover:bg-foreground/8",
+  iconButton:
+    "flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/8",
+  iconButtonActive:
+    "inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-accent-foreground",
+
+  // Progress — full (pill) tracks per M3
+  progressTrack: "h-1 w-full overflow-hidden rounded-full bg-muted",
+  progressTrackThin: "h-1 w-full overflow-hidden rounded-full bg-muted",
+  progressFill: "h-full rounded-full bg-brand transition-all",
+
+  // Attachment card
+  attachmentCard: "flex items-center gap-3 rounded-[12px] bg-muted p-3 border border-border/50",
+
+  // Dialog — extra-large (28px) shape per M3, scrim per M3 spec (~32% black works on dark)
+  dialog: "rounded-[28px] bg-popover p-6 shadow-[0_4px_16px_rgba(0,0,0,0.5)]",
+  dialogBackdrop: "bg-black/50",
+
+  // Type scale — M3 label/body roles
+  mono: "font-mono text-xs text-brand",
+  sectionLabel: "text-sm font-medium text-foreground", // ≈ title-small
+  caption: "text-[13px] text-muted-foreground",          // ≈ body-small
+  headlineSmall: "text-2xl font-normal leading-8 text-foreground tracking-normal",
+  titleMedium: "text-base font-medium leading-6 text-foreground",
+  bodyMedium: "text-sm leading-5 text-muted-foreground",
+  labelLarge: "text-sm font-medium leading-5",
+} as const;
+
+export type FolderAccent = Accent;
+
+export const FOLDER_ACCENT: Record<string, FolderAccent> = {
+  ideas: "violet",
+  tasks: "blue",
+  notes: "amber",
+  links: "green",
+  organize: "gray",
+};
+
+const ACCENT_KEYS: Accent[] = ["blue", "green", "amber", "violet", "rose", "gray"];
+
+/** Deterministic accent per tag string, since tags are user-created (no fixed palette). */
+export function accentForTag(tag: string): AccentMeta {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) | 0;
+  return ACCENT[ACCENT_KEYS[Math.abs(hash) % ACCENT_KEYS.length]];
 }
 </file>
 
@@ -2305,39 +3463,11 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 }
 </file>
 
-<file path="src/app/page.tsx">
-import Link from "next/link";
-import { BrandLogo } from "@/components/brand-logo";
+<file path="src/app/dashboard/page.tsx">
+import DashboardView from "@/components/dashboard/dashboard-view";
 
-export default function Home() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-6 text-center">
-      <div className="max-w-2xl">
-        <BrandLogo className="text-2xl" link={false} />
-        <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">
-          Make progress, consistently.
-        </h1>
-        <p className="mt-5 text-lg text-muted-foreground">
-          A personal system for the goals, habits, and focused work that move
-          your life forward.
-        </p>
-        <div className="mt-8 flex justify-center gap-3">
-          <Link
-            href="/signup"
-            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80"
-          >
-            Create account
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-          >
-            Sign in
-          </Link>
-        </div>
-      </div>
-    </main>
-  );
+export default function Page() {
+  return <DashboardView />;
 }
 </file>
 
@@ -2458,6 +3588,42 @@ function Field({
         required
       />
     </div>
+  );
+}
+</file>
+
+<file path="src/components/brand-logo.tsx">
+import Link from "next/link";
+import { Sun02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { cn } from "@/lib/utils";
+
+export function BrandLogo({
+  className,
+  link = true,
+}: {
+  className?: string;
+  link?: boolean;
+}) {
+  const content = (
+    // <span
+    //   className={cn(
+    //     "inline-flex items-center gap-2 font-bold tracking-tight",
+    //     className,
+    //   )}
+    // >
+    //   <span className="grid size-8 place-items-center rounded-lg  text-primary-foreground">
+    //     <HugeiconsIcon icon={Sun02Icon} size={19} strokeWidth={2.25} />
+    //   </span>
+      <span>Ascend</span>
+    // {/* </span> */}
+  );
+  return link ? (
+    <Link href="/" aria-label="Ascend home">
+      {content}
+    </Link>
+  ) : (
+    content
   );
 }
 </file>
@@ -2583,159 +3749,38 @@ model Verification {
 }
 </file>
 
-<file path="src/app/globals.css">
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+<file path="src/app/page.tsx">
+import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
-
-:root {
-  --font-sans: Arial, Helvetica, sans-serif;
-  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.424 0.199 265.638);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html {
-    @apply font-sans;
-  }
-}
-</file>
-
-<file path="src/app/layout.tsx">
-import type { Metadata } from "next";
-import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "Ascend",
-  description: "Build a consistent life, one day at a time.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function Home() {
   return (
-    <html lang="en" className="dark h-full antialiased font-sans">
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
+    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-6 text-center">
+      <div className="max-w-2xl">
+        <BrandLogo className="text-2xl" link={false} />
+        <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">
+          Make progress, consistently.
+        </h1>
+        <p className="mt-5 text-lg text-muted-foreground">
+          A personal system for the goals, habits, and focused work that move
+          your life forward.
+        </p>
+        <div className="mt-8 flex justify-center gap-3">
+          <Link
+            href="/signup"
+            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80"
+          >
+            Create account
+          </Link>
+          <Link
+            href="/login"
+            className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            Sign in
+          </Link>
+        </div>
+      </div>
+    </main>
   );
 }
 </file>
@@ -2823,6 +3868,149 @@ next-env.d.ts
 /Thinking
 </file>
 
+<file path="src/app/globals.css">
+@import "tailwindcss";
+
+/**
+ * Material 3 — Dark scheme
+ * Tokens derived from the M3 Design Kit "Guidance" page color roles
+ * (figma.com/design/voD6I11ZFUY7ZVPkHR0vJI), seed color #6750A4.
+ * Mapped onto shadcn/ui's CSS variable contract so existing shadcn
+ * components (Button, Card, Dialog, etc.) pick these up automatically.
+ */
+:root {
+  color-scheme: dark;
+
+  /* --- Surface tiers (M3 elevation-by-tone, not shadow) --- */
+  --background: 255 8% 8%; /* surface (#141218) */
+  --foreground: 264 8% 90%; /* on-surface (#E6E0E9) */
+
+  --card: 264 8% 14%; /* surface-container (#211F26) */
+  --card-foreground: 264 8% 90%;
+
+  --popover: 264 6% 17%; /* surface-container-high (#2B2930) */
+  --popover-foreground: 264 8% 90%;
+
+  --muted: 264 6% 17%; /* surface-container-high */
+  --muted-foreground: 264 6% 79%; /* on-surface-variant (#CAC4D0) */
+
+  /* --- Border / outline --- */
+  --border: 264 5% 22%; /* surface-container-highest (#36343A), toned down for dividers */
+  --input: 264 5% 22%;
+  --ring: 264 100% 86%; /* primary (#D0BCFF) */
+
+  /* --- Primary role (brand) --- */
+  --primary: 264 100% 86%; /* primary dark (#D0BCFF) */
+  --primary-foreground: 262 40% 27%; /* on-primary (#381E72) */
+  --brand: 264 100% 86%;
+
+  /* --- Secondary / accent role --- */
+  --accent: 267 15% 29%; /* secondary-container (#4A4458) */
+  --accent-foreground: 265 45% 89%; /* on-secondary-container (#E8DEF8) */
+
+  /* --- Mentions reuse secondary-container --- */
+  --mention: 267 15% 29%;
+  --mention-foreground: 265 45% 89%;
+
+  /* --- Semantic (harmonized to the M3 tone system, not raw CSS colors) --- */
+  --success: 122 27% 68%; /* tonal green */
+  --success-foreground: 122 30% 14%;
+  --warning: 42 65% 68%; /* tonal amber */
+  --warning-foreground: 42 40% 16%;
+  --destructive: 6 71% 81%; /* M3 error dark (#F2B8B5) */
+  --destructive-foreground: 6 30% 20%;
+
+  --radius: 1rem; /* M3 "large" 16px as the base component radius */
+
+  /* M3 shape scale, for reference/use across components */
+  --shape-xs: 4px;
+  --shape-sm: 8px;
+  --shape-md: 12px;
+  --shape-lg: 16px;
+  --shape-xl: 28px;
+}
+
+/**
+ * Tailwind v4: this is what actually turns --background, --border, etc.
+ * into usable utilities like bg-background / border-border / text-brand.
+ * Without this block, Tailwind has no idea those class names exist.
+ */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-brand: hsl(var(--brand));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-mention: hsl(var(--mention));
+  --color-mention-foreground: hsl(var(--mention-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+</file>
+
+<file path="src/app/layout.tsx">
+import type { Metadata } from "next";
+import { NavShortcuts } from "@/components/layout/nav-shortcuts";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Ascend",
+  description: "Build a consistent life, one day at a time.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" className="dark h-full antialiased font-sans">
+      <body className="min-h-full flex flex-col">
+        <NavShortcuts />
+        {children}
+      </body>
+    </html>
+  );
+}
+</file>
+
 <file path="package.json">
 {
   "name": "ascend",
@@ -2837,12 +4025,18 @@ next-env.d.ts
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
     "@hugeicons/core-free-icons": "^4.2.3",
     "@hugeicons/react": "^1.1.9",
     "@prisma/client": "6.19",
     "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "codemirror": "^6.0.2",
     "dotenv": "^17.4.2",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
