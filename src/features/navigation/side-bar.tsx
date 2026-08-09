@@ -25,11 +25,31 @@ import {
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Activities", href: "/activities", icon: Activity },
-  { label: "Goals", href: "/dashboard/goals", icon: Goal },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays },
-  { label: "Admin", href: "/admin", icon: Shield },
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Activities",
+    href: "/dashboard/activities",
+    icon: Activity,
+  },
+  {
+    label: "Goals",
+    href: "/dashboard/goals",
+    icon: Goal,
+  },
+  {
+    label: "Calendar",
+    href: "/dashboard/calendar",
+    icon: CalendarDays,
+  },
+  {
+    label: "Admin",
+    href: "/dashboard/admin",
+    icon: Shield,
+  },
 ];
 
 // Floating label that reveals beside each icon on hover — nothing but
@@ -75,7 +95,10 @@ export function AppSidebar() {
           {navigation.map((item) => {
             const Icon = item.icon;
             const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`);
 
             return (
               <div key={item.href} className="group relative">
