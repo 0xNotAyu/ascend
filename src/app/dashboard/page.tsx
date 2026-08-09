@@ -1,4 +1,4 @@
-import WeeklyDashboard from "@/components/dashboard/self-managment-system";
+import WeeklyDashboard from "@/features/dashboard/self-managment-system";
 
 export default function Page() {
   return <WeeklyDashboard />;

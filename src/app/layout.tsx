@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { NavShortcuts } from "@/components/layout/nav-shortcuts";
+import { NavShortcuts } from "@/features/navigation/nav-shortcuts";
 import "./globals.css";
 
 export const metadata: Metadata = {

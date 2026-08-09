@@ -1,5 +1,5 @@
-import { AuthShell } from "@/components/auth/auth-shell";
-import { VerifyEmailPanel } from "@/components/auth/verify-email-panel";
+import { AuthShell } from "@/features/auth/auth-shell";
+import { VerifyEmailPanel } from "@/features/auth/verify-email-panel";
 export default function VerifyEmailPage() {
   return (
     <AuthShell
