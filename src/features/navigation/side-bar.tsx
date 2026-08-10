@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   CalendarDays,
+  ChartPie,
   Command,
   Goal,
   LayoutDashboard,
@@ -31,9 +32,9 @@ const navigation = [
     icon: LayoutDashboard,
   },
   {
-    label: "Activities",
-    href: "/dashboard/activities",
-    icon: Activity,
+    label: "Overview",
+    href: "/dashboard/overview",
+    icon: ChartPie,
   },
   {
     label: "Goals",
