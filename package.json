@@ -18,7 +18,7 @@
     "@codemirror/view": "^6.43.8",
     "@hugeicons/core-free-icons": "^4.2.3",
     "@hugeicons/react": "^1.1.9",
-    "@prisma/client": "6.19",
+    "@prisma/client": "^6.19.0",
     "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -27,7 +27,6 @@
     "dotenv": "^17.4.2",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
-    "prisma": "6.19",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.4",
@@ -44,6 +43,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "prisma": "^6.19.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
