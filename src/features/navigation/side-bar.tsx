@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
+  PenLine ,
   CalendarDays,
   ChartPie,
   Command,
@@ -27,30 +27,21 @@ import { cn } from "@/lib/utils";
 
 const navigation = [
   {
-    label: "Dashboard",
-    href: "/dashboard",
+    label: "Today",
+    href: "/today",
     icon: LayoutDashboard,
   },
   {
     label: "Overview",
-    href: "/dashboard/overview",
+    href: "/overview",
     icon: ChartPie,
   },
   {
-    label: "Goals",
-    href: "/dashboard/goals",
-    icon: Goal,
+    label: "Plan",
+    href: "/plan",
+    icon: PenLine ,
   },
-  {
-    label: "Calendar",
-    href: "/dashboard/calendar",
-    icon: CalendarDays,
-  },
-  {
-    label: "Admin",
-    href: "/dashboard/admin",
-    icon: Shield,
-  },
+
 ];
 
 // Floating label that reveals beside each icon on hover — nothing but
