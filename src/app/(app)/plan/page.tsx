@@ -1,3 +1,9 @@
+import { PlanForm } from "@/features/plan/plan-form";
+
 export default function PlanPage() {
-  return <h1>Hello plan</h1>;
+  return (
+    <div className="p-6">
+      <PlanForm />
+    </div>
+  );
 }
