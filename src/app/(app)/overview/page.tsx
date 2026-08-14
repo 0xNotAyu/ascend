@@ -1,3 +1,9 @@
+import { OverviewPanel } from "@/features/overview/overview-panel";
+
 export default function OverviewPage() {
-  return <h1>Hello Overview</h1>;
+  return (
+    <div className="p-6">
+      <OverviewPanel />
+    </div>
+  );
 }

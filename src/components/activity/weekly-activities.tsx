@@ -1,96 +1,55 @@
-// ---------- Weekly Activities ----------
-// Holds the set of activities due this week. Collapsed view shows a
-// "Recommended" teaser + refresh timer + "do weekly" button; that
-// button opens a dialog with all of them laid out 3x3 in a square,
-// next to a vertical progress bar tracking how many are done.
+"use client";
 
-import { WeeklyActivitiesProps } from "@/types/activities.types";
-import React from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
-import { ActivityCard } from "./activity-card";
-import { cn } from "@/lib/utils";
+// ---------- Weekly Activities (read-only, v1) ----------
+// Scoped per PRD §5.1: shows the past 7 days' completion dots only.
+// No interaction here yet — that's parked for v2 (see PRD §9).
 
+import * as React from "react";
 
-// ---------- Vertical Progress ----------
-// Used only inside the weekly dialog — separate from the horizontal
-// bar in the main "Progress Today" row.
-
-function VerticalProgress({ value }: { value: number }) {
-  return (
-    <div className="relative flex w-1.5 flex-col justify-end self-stretch rounded-full bg-neutral-800">
-      <div
-        className="w-full rounded-full bg-white transition-all"
-        style={{ height: `${value}%` }}
-      />
-      <div
-        className="absolute left-1/2 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-neutral-900 bg-white transition-all"
-        style={{ bottom: `calc(${value}% - 6px)` }}
-      />
-    </div>
-  );
+interface DayBucket {
+  date: string;
+  completed: number;
+  total: number;
 }
 
+const WEEKDAY_LABEL = ["S", "M", "T", "W", "T", "F", "S"];
 
-export function WeeklyActivities({
-  activities,
-  onToggle,
-  refreshLabel = "Refresh in 2d 4h",
-}: WeeklyActivitiesProps) {
-  const [open, setOpen] = React.useState(false);
-  const doneCount = activities.filter((a) => a.done).length;
-  const progress = Math.round((doneCount / activities.length) * 100);
-
-  const secondaryButton =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-neutral-800 px-4 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-700";
-
-
-
+export function WeeklyActivities({ days }: { days: DayBucket[] }) {
   return (
     <div className="flex h-full flex-col justify-between rounded-xl border border-white/5 bg-neutral-800/60 p-4">
-      <p className="text-sm font-semibold text-white">Weekly Activities</p>
+      <p className="text-sm font-semibold text-white">Last 7 days</p>
 
-      <button
-        onClick={() => setOpen(true)}
-        className="my-3 flex flex-1 items-center justify-center rounded-lg border border-dashed border-white/10 text-sm font-medium text-neutral-500 transition-colors hover:border-white/20 hover:text-neutral-300"
-      >
-        Recommended
-      </button>
+      <div className="my-3 flex flex-1 items-center justify-center gap-3">
+        {days.map((day) => {
+          const hasActivity = day.total > 0;
+          const allDone = hasActivity && day.completed === day.total;
+          const someDone = hasActivity && day.completed > 0 && !allDone;
+          const dateObj = new Date(day.date + "T00:00:00Z");
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-neutral-500">
-          {refreshLabel}
-        </span>
-
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger
-            render={
-              <button className={cn(secondaryButton, "h-8 px-4 text-xs")}>
-                do weekly
-              </button>
-            }
-          ></DialogTrigger>
-          <DialogContent className="max-w-xl border-white/5 bg-neutral-900">
-            <DialogHeader>
-              <DialogTitle className="font-semibold text-white">
-                Weekly Activities
-              </DialogTitle>
-            </DialogHeader>
-            <div className="flex gap-4 pt-2">
-              <VerticalProgress value={progress} />
-              <div className="grid aspect-square flex-1 grid-cols-3 grid-rows-3 gap-3">
-                {activities.map((activity) => (
-                  <ActivityCard
-                    key={activity.id}
-                    activity={activity}
-                    size="compact"
-                    onGo={onToggle}
-                  />
-                ))}
-              </div>
+          return (
+            <div key={day.date} className="flex flex-col items-center gap-2">
+              <span className="text-[10px] font-medium uppercase text-neutral-500">
+                {WEEKDAY_LABEL[dateObj.getUTCDay()]}
+              </span>
+              <span
+                title={hasActivity ? `${day.completed}/${day.total} completed` : "Nothing due"}
+                className={
+                  "h-2.5 w-2.5 rounded-full " +
+                  (allDone
+                    ? "bg-white"
+                    : someDone
+                      ? "bg-neutral-400"
+                      : "bg-neutral-600")
+                }
+              />
             </div>
-          </DialogContent>
-        </Dialog>
+          );
+        })}
       </div>
+
+      <p className="text-[11px] font-medium text-neutral-500">
+        Filled = everything due that day got done
+      </p>
     </div>
   );
 }
