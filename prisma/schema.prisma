@@ -72,3 +72,77 @@ model Verification {
   @@index([identifier])
   @@map("verification")
 }
+
+model Activity {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String // Better Auth user id (plain string, not a relation — see User model above)
+  title       String
+  description String?
+  type        ActivityType
+  config      Json // { target, unit } for COUNTER, {} for others
+  tagIds      String[]     @db.ObjectId
+  lifeArea    LifeArea
+  frequency   Frequency
+  basePoints  Int          @default(10)
+  archived    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  instances ActivityInstance[]
+
+  @@index([userId])
+  @@map("activity")
+}
+
+model ActivityInstance {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  activityId   String         @db.ObjectId
+  activity     Activity       @relation(fields: [activityId], references: [id])
+  date         DateTime // day this instance belongs to
+  status       InstanceStatus @default(PENDING)
+  progress     Int            @default(0) // for COUNTER
+  sessionStart DateTime? // for TOGGLE
+  durationSec  Int            @default(0) // for TOGGLE, accumulated
+  completedAt  DateTime?
+  pointsEarned Int            @default(0)
+
+  @@index([activityId])
+  @@map("activityInstance")
+}
+
+model Tag {
+  id     String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId String
+  name   String
+  color  String
+  icon   String?
+
+  @@index([userId])
+  @@map("tag")
+}
+
+enum ActivityType {
+  SIMPLE
+  COUNTER
+  TOGGLE
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  ONE_TIME
+}
+
+enum InstanceStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum LifeArea {
+  HEALTH
+  CAREER
+  PERSONAL
+  FINANCE
+  RELATIONSHIPS
+  OTHER
+}
