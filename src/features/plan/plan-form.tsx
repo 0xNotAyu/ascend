@@ -1,22 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-type ActivityType = "SIMPLE" | "COUNTER" | "TOGGLE";
-type Frequency = "DAILY" | "WEEKLY" | "ONE_TIME";
-type LifeArea =
-  | "HEALTH"
-  | "CAREER"
-  | "PERSONAL"
-  | "FINANCE"
-  | "RELATIONSHIPS"
-  | "OTHER";
-
-type Tag = { id: string; name: string; color: string };
+import {
+  ActivitySummary,
+  ActivityType,
+  Frequency,
+  LifeArea,
+  Tag,
+} from "@/types/activities.types";
 
 const ACTIVITY_TYPES: ActivityType[] = ["SIMPLE", "COUNTER", "TOGGLE"];
 const FREQUENCIES: Frequency[] = ["DAILY", "WEEKLY", "ONE_TIME"];
@@ -42,29 +36,42 @@ const ghostButton =
 const chipClass =
   "inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-neutral-800 px-2.5 text-xs font-medium text-neutral-300";
 
-export function PlanForm() {
-  const router = useRouter();
+interface PlanFormProps {
+  /** Pass an activity to edit it (PATCH); omit/null to create (POST). */
+  activity?: ActivitySummary | null;
+  onSaved: (activity: ActivitySummary) => void;
+  onCancel: () => void;
+}
 
-  const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [type, setType] = React.useState<ActivityType>("SIMPLE");
-  const [lifeArea, setLifeArea] = React.useState<LifeArea>("HEALTH");
-  const [frequency, setFrequency] = React.useState<Frequency>("DAILY");
-  const [basePoints, setBasePoints] = React.useState(10);
+export function PlanForm({ activity = null, onSaved, onCancel }: PlanFormProps) {
+  const isEdit = Boolean(activity);
+
+  const [title, setTitle] = React.useState(activity?.title ?? "");
+  const [description, setDescription] = React.useState(activity?.description ?? "");
+  const [type, setType] = React.useState<ActivityType>(activity?.type ?? "SIMPLE");
+  const [lifeArea, setLifeArea] = React.useState<LifeArea>(activity?.lifeArea ?? "HEALTH");
+  // New activities default to Backlog (ONE_TIME) — "I want to do this
+  // sometime" is the default assumption, DAILY/WEEKLY is the opt-in.
+  // See plan-workspace README §5.
+  const [frequency, setFrequency] = React.useState<Frequency>(
+    activity?.frequency ?? "ONE_TIME",
+  );
+  const [basePoints, setBasePoints] = React.useState(activity?.basePoints ?? 10);
 
   // COUNTER-only fields
-  const [target, setTarget] = React.useState(1);
-  const [unit, setUnit] = React.useState("");
+  const [target, setTarget] = React.useState(activity?.config?.target ?? 1);
+  const [unit, setUnit] = React.useState(activity?.config?.unit ?? "");
 
   // Tags
   const [tags, setTags] = React.useState<Tag[]>([]);
-  const [selectedTagIds, setSelectedTagIds] = React.useState<string[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = React.useState<string[]>(
+    activity?.tagIds ?? [],
+  );
   const [newTagName, setNewTagName] = React.useState("");
   const [creatingTag, setCreatingTag] = React.useState(false);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/tags")
@@ -111,7 +118,6 @@ export function PlanForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
 
     if (!title.trim()) {
       setError("Title is required.");
@@ -126,37 +132,33 @@ export function PlanForm() {
     try {
       const config = type === "COUNTER" ? { target, unit: unit.trim() || undefined } : {};
 
-      const res = await fetch("/api/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || undefined,
-          type,
-          config,
-          tagIds: selectedTagIds,
-          lifeArea,
-          frequency,
-          basePoints,
-        }),
-      });
+      const res = await fetch(
+        isEdit ? `/api/activities/${activity!.id}` : "/api/activities",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title.trim(),
+            description: description.trim() || undefined,
+            type,
+            config,
+            tagIds: selectedTagIds,
+            lifeArea,
+            frequency,
+            basePoints,
+          }),
+        },
+      );
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to create activity");
+        throw new Error(data.error ?? "Failed to save activity");
       }
 
-      setSuccess(true);
-      setTitle("");
-      setDescription("");
-      setType("SIMPLE");
-      setTarget(1);
-      setUnit("");
-      setSelectedTagIds([]);
-      setBasePoints(10);
-
-      // Give the success state a beat to show, then send them to /today.
-      setTimeout(() => router.push("/today"), 700);
+      const data = await res.json();
+      // On save the card drops straight into the grid — no redirect,
+      // no full-page navigation. See plan-workspace README §5.
+      onSaved(data.activity as ActivitySummary);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -165,22 +167,21 @@ export function PlanForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto w-full max-w-lg space-y-6">
+    <form onSubmit={handleSubmit} className="w-full space-y-5">
       <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight text-white">Plan an activity</h1>
-        <p className="text-sm text-neutral-500">
-          Add something to track. It&apos;ll show up on Today when it&apos;s due.
+        <h2 className="text-sm font-semibold text-white">
+          {isEdit ? "Edit activity" : "New activity"}
+        </h2>
+        <p className="text-xs text-neutral-500">
+          {isEdit
+            ? "Update the details below."
+            : "Defaults to Backlog until you push it or set a schedule."}
         </p>
       </div>
 
       {error && (
         <div className="rounded-xl border border-white/10 bg-neutral-800/60 px-4 py-3 text-sm text-red-400">
           {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-xl border border-white/10 bg-neutral-800/60 px-4 py-3 text-sm text-emerald-500">
-          Activity created.
         </div>
       )}
 
@@ -242,7 +243,7 @@ export function PlanForm() {
           >
             {FREQUENCIES.map((f) => (
               <option key={f} value={f}>
-                {f === "ONE_TIME" ? "One time" : f.charAt(0) + f.slice(1).toLowerCase()}
+                {f === "ONE_TIME" ? "One time (Backlog)" : f.charAt(0) + f.slice(1).toLowerCase()}
               </option>
             ))}
           </select>
@@ -360,16 +361,12 @@ export function PlanForm() {
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-2">
-        <button
-          type="button"
-          className={ghostButton}
-          onClick={() => router.push("/today")}
-        >
+        <button type="button" className={ghostButton} onClick={onCancel}>
           <X className="size-3.5" />
           Cancel
         </button>
         <button type="submit" disabled={submitting} className={primaryButton}>
-          {submitting ? "Saving…" : "Create activity"}
+          {submitting ? "Saving…" : isEdit ? "Save changes" : "Create activity"}
         </button>
       </div>
     </form>

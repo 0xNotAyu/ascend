@@ -1,9 +1,5 @@
-import { PlanForm } from "@/features/plan/plan-form";
+import { PlanWorkspace } from "@/features/plan/plan-workspace";
 
 export default function PlanPage() {
-  return (
-    <div className="p-6">
-      <PlanForm />
-    </div>
-  );
+  return <PlanWorkspace />;
 }

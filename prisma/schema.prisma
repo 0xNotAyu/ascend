@@ -85,6 +85,7 @@ model Activity {
   frequency   Frequency
   basePoints  Int          @default(10)
   archived    Boolean      @default(false)
+  queuedFor   DateTime? // set when "pushed" to a specific day; null = plain backlog (see plan workspace)
   createdAt   DateTime     @default(now())
 
   instances ActivityInstance[]
@@ -146,3 +147,4 @@ enum LifeArea {
   RELATIONSHIPS
   OTHER
 }
+

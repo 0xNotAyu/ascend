@@ -21,6 +21,7 @@ export interface ActivitySummary {
   frequency: Frequency;
   basePoints: number;
   archived: boolean;
+  queuedFor?: string | null;
 }
 
 export interface TodayInstance {
@@ -54,4 +55,18 @@ export interface ActivityCardProps {
   ) => void | Promise<void>;
   size?: "default" | "compact";
   className?: string;
+}
+
+// --- /plan workspace additions -------------------------------------
+//
+// Not a stored field — derived from `frequency` + `queuedFor` so the
+// UI has one place that defines what "Backlog / Scheduled / Queued"
+// means (see plan-workspace README §4).
+export type ActivityState = "BACKLOG" | "SCHEDULED" | "QUEUED";
+
+export function getActivityState(
+  activity: Pick<ActivitySummary, "frequency" | "queuedFor">,
+): ActivityState {
+  if (activity.frequency !== "ONE_TIME") return "SCHEDULED";
+  return activity.queuedFor ? "QUEUED" : "BACKLOG";
 }

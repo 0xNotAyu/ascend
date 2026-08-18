@@ -11,12 +11,14 @@ import { startOfTodayUTC, endOfTodayUTC, startOfWeekUTC } from "@/lib/date-utils
 // ActivityInstance if one doesn't exist yet. Calling this twice in the
 // same day must NOT create duplicates.
 //
-// Due rules (v1, no cron — see PRD §7):
+// Due rules (v1):
 //   DAILY     — due every day. One instance per calendar day.
 //   WEEKLY    — due once per week. If an instance already exists anywhere
 //               in the current week, reuse it instead of making a new one.
-//   ONE_TIME  — due once, ever. If any instance already exists for this
-//               activity, reuse it; otherwise create today's.
+//   ONE_TIME  — NOT auto-due just by existing (see plan-workspace README
+//               §4/§7). Only due once explicitly pushed via queuedFor,
+//               and only once queuedFor has arrived (queuedFor <= today).
+//               Backlog activities (queuedFor is null) never surface here.
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
     where: { userId: session.user.id, archived: false },
   });
 
-  const instances = await Promise.all(
+  const results = await Promise.all(
     activities.map(async (activity) => {
       if (activity.frequency === "DAILY") {
         const existing = await prisma.activityInstance.findFirst({
@@ -54,7 +56,12 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // ONE_TIME
+      // ONE_TIME — backlog by default, only due once queued and the
+      // queued date has arrived.
+      if (!activity.queuedFor || activity.queuedFor > todayEnd) {
+        return null;
+      }
+
       const existing = await prisma.activityInstance.findFirst({
         where: { activityId: activity.id },
         orderBy: { date: "desc" },
@@ -64,6 +71,10 @@ export async function GET(req: NextRequest) {
         data: { activityId: activity.id, date: todayStart },
       });
     }),
+  );
+
+  const instances = results.filter(
+    (instance): instance is NonNullable<typeof instance> => instance !== null,
   );
 
   // Attach the parent activity so the UI has type/title/points without a

@@ -8,7 +8,8 @@ const ACTIVITY_TYPES = Object.values(ActivityType);
 const FREQUENCIES = Object.values(Frequency);
 const LIFE_AREAS = Object.values(LifeArea);
 
-// PATCH /api/activities/:id — edit fields or archive/unarchive.
+// PATCH /api/activities/:id — edit fields, archive/unarchive, or set/clear
+// the "push to tomorrow" nudge via queuedFor (see plan workspace README §7).
 // Scoped so a user can only touch their own activities.
 export async function PATCH(
   req: NextRequest,
@@ -45,6 +46,7 @@ export async function PATCH(
     frequency,
     basePoints,
     archived,
+    queuedFor,
   } = (body ?? {}) as Record<string, unknown>;
 
   if (type !== undefined && !ACTIVITY_TYPES.includes(type as ActivityType)) {
@@ -65,6 +67,16 @@ export async function PATCH(
       { status: 400 },
     );
   }
+  if (
+    queuedFor !== undefined &&
+    queuedFor !== null &&
+    (typeof queuedFor !== "string" || Number.isNaN(Date.parse(queuedFor)))
+  ) {
+    return NextResponse.json(
+      { error: "queuedFor must be an ISO date string or null" },
+      { status: 400 },
+    );
+  }
 
   const activity = await prisma.activity.update({
     where: { id },
@@ -78,6 +90,9 @@ export async function PATCH(
       ...(frequency !== undefined ? { frequency: frequency as Frequency } : {}),
       ...(typeof basePoints === "number" ? { basePoints } : {}),
       ...(typeof archived === "boolean" ? { archived } : {}),
+      ...(queuedFor !== undefined
+        ? { queuedFor: queuedFor === null ? null : new Date(queuedFor as string) }
+        : {}),
     },
   });
 
