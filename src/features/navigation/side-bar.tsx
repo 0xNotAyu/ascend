@@ -87,10 +87,7 @@ export function AppSidebar() {
           {navigation.map((item) => {
             const Icon = item.icon;
             const active =
-              item.href === "/dashboard"
-                ? pathname === "/dashboard"
-                : pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <div key={item.href} className="group relative">

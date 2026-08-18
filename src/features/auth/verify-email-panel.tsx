@@ -14,7 +14,7 @@ export function VerifyEmailPanel() {
     setIsPending(true);
     const result = await authClient.sendVerificationEmail({
       email,
-      callbackURL: "/dashboard",
+      callbackURL: "/today",
     });
     setIsPending(false);
     setStatus(

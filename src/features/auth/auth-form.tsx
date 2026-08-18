@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,17 @@ import { Label } from "@/components/ui/label";
 type Mode = "login" | "signup"; 
 
 export function AuthForm({ mode }: { mode: Mode }) {
+  return (
+    <Suspense fallback={null}>
+      <AuthFormInner mode={mode} />
+    </Suspense>
+  );
+}
+
+function AuthFormInner({ mode }: { mode: Mode }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo") || "/today";
   const [error, setError] = useState("");
   const [isPending, setIsPending] = useState(false);
   const isSignUp = mode === "signup";
@@ -41,7 +51,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     router.push(
       isSignUp
         ? `/verify-email?email=${encodeURIComponent(email)}`
-        : "/dashboard",
+        : redirectTo,
     );
     router.refresh();
   }

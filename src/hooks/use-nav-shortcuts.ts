@@ -25,8 +25,8 @@ export function useNavShortcuts() {
         return;
       }
 
-      if (e.key === "Escape" && pathname !== "/dashboard") {
-        router.push("/dashboard");
+      if (e.key === "Escape" && pathname !== "/today") {
+        router.push("/today");
       }
     }
 
