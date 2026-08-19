@@ -13,6 +13,7 @@ import {
   LogOut,
   Settings,
   Shield,
+  Calendar 
 } from "lucide-react";
 
 import {
@@ -40,6 +41,11 @@ const navigation = [
     label: "Plan",
     href: "/plan",
     icon: PenLine ,
+  },
+  {
+    label: "Calendar",
+    href: "/calendar",
+    icon: Calendar  ,
   },
 
 ];
@@ -73,41 +79,39 @@ export function AppSidebar() {
   return (
     <>
       {/* Icon rail */}
-      <aside
-        className="
-          fixed left-4 top-4 bottom-4 z-40
-          flex w-16 flex-col items-center
-          gap-2 
-          bg-tranparent p-2
-        "
-      >
-        {/* Navigation — only icons are visible; hovering an icon
-            reveals its label beside it. */}
-        <nav className="flex flex-1 flex-col items-center justify-center gap-2">
-          {navigation.map((item) => {
-            const Icon = item.icon;
-            const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+<aside
+  className="
+    fixed bottom-6 left-6 top-6 z-40
+    flex w-12 flex-col items-center
+    bg-transparent
+  "
+>
+  <nav className="flex flex-1 flex-col items-center justify-center gap-2">
+    {navigation.map((item) => {
+      const Icon = item.icon;
+      const active =
+        pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-            return (
-              <div key={item.href} className="group relative">
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex size-10 items-center justify-center rounded-xl transition-colors",
-                    active
-                      ? " text-white"
-                      : "text-neutral-700 hover:bg-white/[0.06] hover:text-white",
-                  )}
-                >
-                  <Icon className="size-[18px]" strokeWidth={1.8} />
-                </Link>
-                <IconLabel>{item.label}</IconLabel>
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
+      return (
+        <div key={item.href} className="group relative">
+          <Link
+            href={item.href}
+            className={cn(
+              "flex size-10 items-center justify-center rounded-xl transition-colors",
+              active
+                ? "text-white"
+                : "text-neutral-600 hover:bg-white/[0.06] hover:text-white",
+            )}
+          >
+            <Icon className="size-[18px]" strokeWidth={1.8} />
+          </Link>
+
+          <IconLabel>{item.label}</IconLabel>
+        </div>
+      );
+    })}
+  </nav>
+</aside>
 
       {/* Account — floats independently at the top right, on its own
           invisible layer: no visible chrome until hovered, so it
