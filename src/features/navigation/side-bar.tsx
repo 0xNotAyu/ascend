@@ -113,63 +113,7 @@ export function AppSidebar() {
   </nav>
 </aside>
 
-      {/* Account — floats independently at the top right, on its own
-          invisible layer: no visible chrome until hovered, so it
-          reads as sitting above the page rather than inside the rail. */}
-      <div className="fixed right-4 top-4 z-50">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                className="
-                  flex size-10 items-center justify-center
-                  rounded-full border border-transparent
-                  bg-neutral-900 text-sm font-medium text-white
-                  transition-colors
-                  hover:border-white/[0.08] hover:bg-neutral-800/80
-                "
-              >
-                A
-              </button>
-            }
-          ></DropdownMenuTrigger>
-
-          <DropdownMenuContent
-            side="bottom"
-            align="end"
-            sideOffset={10}
-            className="
-              w-52 rounded-xl border-white/[0.08] bg-neutral-900 p-1.5
-            "
-          >
-            <div className="px-2.5 py-2">
-              <p className="text-sm font-medium text-white">Aayush</p>
-              <p className="text-xs text-neutral-500">Personal account</p>
-            </div>
-
-            <DropdownMenuSeparator className="bg-white/[0.06]" />
-
-            <DropdownMenuItem
-              render={
-                <Link href="/settings" className="cursor-pointer">
-                  <Settings className="mr-2 size-4" />
-                  Settings
-                </Link>
-              }
-            ></DropdownMenuItem>
-
-            <DropdownMenuItem
-              className="
-                cursor-pointer text-neutral-400
-                focus:text-white
-              "
-            >
-              <LogOut className="mr-2 size-4" />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      
     </>
   );
 }

@@ -1,5 +1,5 @@
 export type ActivityType = "SIMPLE" | "COUNTER" | "TOGGLE";
-export type Frequency = "DAILY" | "WEEKLY" | "ONE_TIME";
+export type Frequency = "ONE_TIME" | "DAILY" | "MONTHLY";
 export type LifeArea =
   | "HEALTH"
   | "CAREER"
